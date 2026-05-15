@@ -31,45 +31,46 @@ async def match_video(
         if not cap.isOpened():
             raise HTTPException(status_code=422, detail="Cannot open video file.")
 
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        duration = total_frames / fps if fps > 0 else 0
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps if fps > 0 else 0
 
-        matches = []
-        frame_number = 0
+            matches = []
+            frame_number = 0
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame_number += 1
-            if frame_number % frame_skip != 0:
-                continue
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frame_number += 1
+                if frame_number % frame_skip != 0:
+                    continue
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            locations = face_recognition.face_locations(rgb)
-            if not locations:
-                continue
-            encodings = face_recognition.face_encodings(rgb, locations)
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                locations = face_recognition.face_locations(rgb)
+                if not locations:
+                    continue
+                encodings = face_recognition.face_encodings(rgb, locations)
 
-            for loc, enc in zip(locations, encodings):
-                dist = face_recognition.face_distance([ref_encoding], enc)[0]
-                confidence = distance_to_confidence(dist)
-                if confidence >= threshold:
-                    top, right, bottom, left = loc
-                    timestamp = frame_number / fps
-                    fname = f"{uuid.uuid4().hex}.jpg"
-                    frame_path = FRAMES_DIR / fname
-                    cv2.imwrite(str(frame_path), frame)
-                    matches.append({
-                        "timestamp_seconds": round(timestamp, 2),
-                        "frame_number": frame_number,
-                        "confidence": round(confidence, 3),
-                        "bbox": [top, right, bottom, left],
-                        "frame_url": f"/static/frames/{fname}",
-                    })
-
-        cap.release()
+                for loc, enc in zip(locations, encodings):
+                    dist = face_recognition.face_distance([ref_encoding], enc)[0]
+                    confidence = distance_to_confidence(dist)
+                    if confidence >= threshold:
+                        top, right, bottom, left = loc
+                        timestamp = frame_number / fps
+                        fname = f"{uuid.uuid4().hex}.jpg"
+                        frame_path = FRAMES_DIR / fname
+                        cv2.imwrite(str(frame_path), frame)
+                        matches.append({
+                            "timestamp_seconds": round(timestamp, 2),
+                            "frame_number": frame_number,
+                            "confidence": round(confidence, 3),
+                            "bbox": [top, right, bottom, left],
+                            "frame_url": f"/static/frames/{fname}",
+                        })
+        finally:
+            cap.release()
     finally:
         tmp_path.unlink(missing_ok=True)
 

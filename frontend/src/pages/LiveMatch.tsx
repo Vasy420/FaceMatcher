@@ -6,6 +6,7 @@ import { getWsUrl } from '../lib/api';
 import { LiveMatchResponse, LiveFaceResult } from '../types';
 import { confidenceColor } from '../lib/utils';
 import clsx from 'clsx';
+import PageHeader from '../components/PageHeader';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -25,8 +26,6 @@ export default function LiveMatch() {
   const [faceCount, setFaceCount] = useState(0);
   const [bestConfidence, setBestConfidence] = useState(0);
   const [matchDetected, setMatchDetected] = useState(false);
-  const [threshold] = useState(0.55);
-
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -46,12 +45,21 @@ export default function LiveMatch() {
   useEffect(() => { readyRef.current = ready; }, [ready]);
   useEffect(() => { runningRef.current = running; }, [running]);
 
+  useEffect(() => {
+    if (!refImg) {
+      setRefPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(refImg);
+    setRefPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [refImg]);
+
   function pickRef(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'error'); return; }
     setRefImg(f);
-    setRefPreview(URL.createObjectURL(f));
     e.target.value = '';
   }
 
@@ -116,7 +124,7 @@ export default function LiveMatch() {
       fpsCounterRef.current++;
       const best = newFaces.length > 0 ? Math.max(...newFaces.map((f) => f.confidence)) : 0;
       setBestConfidence(best);
-      setMatchDetected(newFaces.some((f) => f.is_match && f.confidence >= threshold));
+      setMatchDetected(newFaces.some((f) => f.is_match));
     };
 
     ws.onclose = () => {
@@ -188,10 +196,13 @@ export default function LiveMatch() {
 
   return (
     <motion.div {...PAGE} className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-syne font-bold text-2xl text-white">Live Camera</h1>
-        <p className="text-sm text-slate-500 mt-1">Real-time face matching via webcam WebSocket stream.</p>
-      </div>
+      <PageHeader
+        icon={Camera}
+        eyebrow="MODULE · 02"
+        title="Live Camera"
+        accent="#8B5CF6, #D946EF"
+        subtitle="Real-time face matching via webcam WebSocket stream."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
         {/* Left panel */}

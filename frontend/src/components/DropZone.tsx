@@ -1,4 +1,4 @@
-import { useRef, useState, DragEvent } from 'react';
+import { useRef, useState, useEffect, DragEvent } from 'react';
 import { Upload, Image as ImageIcon, Film, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '../App';
@@ -18,12 +18,26 @@ const MAX_VIDEO = 100 * 1024 * 1024;
 export default function DropZone({ accept, file, onFile, label, previewUrl }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const { toast } = useToast();
 
   const acceptAttr = accept === 'image' ? 'image/jpeg,image/png,image/webp,image/heic' : 'video/mp4,video/avi,video/quicktime';
   const Icon = accept === 'image' ? ImageIcon : Film;
   const maxSize = accept === 'image' ? MAX_IMAGE : MAX_VIDEO;
   const maxLabel = accept === 'image' ? '5 MB' : '100 MB';
+
+  useEffect(() => {
+    if (previewUrl) {
+      setPreviewSrc(previewUrl);
+      return;
+    }
+    if (file && accept === 'image') {
+      const url = URL.createObjectURL(file);
+      setPreviewSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewSrc(null);
+  }, [file, previewUrl, accept]);
 
   async function handleFile(incoming: File) {
     if (incoming.name.toLowerCase().endsWith('.heic')) {
@@ -47,8 +61,6 @@ export default function DropZone({ accept, file, onFile, label, previewUrl }: Pr
     const f = e.dataTransfer.files[0];
     if (f) handleFile(f);
   }
-
-  const previewSrc = previewUrl ?? (file && accept === 'image' ? URL.createObjectURL(file) : null);
 
   return (
     <div className="flex flex-col gap-2">

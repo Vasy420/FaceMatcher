@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Camera, X, Zap } from 'lucide-react';
+import { Upload, Camera, X, Zap, Smile } from 'lucide-react';
 import { useToast } from '../App';
 import { api } from '../lib/api';
 import { EmotionResponse, EmotionFace } from '../types';
 import { EMOTION_EMOJI, EMOTION_COLOR } from '../lib/utils';
+import PageHeader from '../components/PageHeader';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -70,15 +71,30 @@ export default function EmotionDetect() {
     }
   }
 
+  useEffect(() => {
+    if (!file) {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
   function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'error'); return; }
     setFile(f);
-    setPreview(URL.createObjectURL(f));
     setResult(null);
     e.target.value = '';
   }
+
+  useEffect(() => {
+    if (webcamMode && result?.faces) {
+      drawOverlay(result.faces);
+    }
+  }, [result, webcamMode]);
 
   async function captureAndDetect() {
     if (detectingRef.current) return;
@@ -163,10 +179,13 @@ export default function EmotionDetect() {
 
   return (
     <motion.div {...PAGE} className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-syne font-bold text-2xl text-white">Emotion Detection</h1>
-        <p className="text-sm text-slate-500 mt-1">Live webcam detection or upload a photo.</p>
-      </div>
+      <PageHeader
+        icon={Smile}
+        eyebrow="MODULE · 04"
+        title="Emotion Detection"
+        accent="#F59E0B, #FB923C"
+        subtitle="Live webcam emotion analysis or upload a photo — powered by DeepFace + MTCNN."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-5">
         {/* Upload / webcam */}
@@ -195,6 +214,7 @@ export default function EmotionDetect() {
             <canvas ref={canvasRef} className="hidden" />
             <div className={webcamMode ? 'relative' : 'hidden'}>
               <video ref={videoRef} className="w-full rounded-xl" playsInline muted />
+              <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none rounded-xl" />
               {/* Live badge */}
               <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 rounded-full px-2.5 py-1">
                 <span className={`w-1.5 h-1.5 rounded-full ${liveDetecting ? 'bg-amber-400 animate-pulse' : 'bg-green-400 animate-ping'}`} />

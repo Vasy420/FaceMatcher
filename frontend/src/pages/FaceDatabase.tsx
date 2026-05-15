@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Search, UserCheck, Users } from 'lucide-react';
+import { Plus, Trash2, Search, UserCheck, Users, Database } from 'lucide-react';
 import { useToast } from '../App';
 import { api, getStaticUrl } from '../lib/api';
 import { Face, IdentifyResponse, IdentifyResult } from '../types';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
+import PageHeader from '../components/PageHeader';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -44,8 +45,28 @@ export default function FaceDatabase() {
   useEffect(() => { loadFaces(); }, []);
 
   useEffect(() => {
-    if (identifyResult && identifyFile) drawAnnotations(identifyResult.results);
-  }, [identifyResult]);
+    if (identifyResult && identifyPreview) drawAnnotations(identifyResult.results);
+  }, [identifyResult, identifyPreview]);
+
+  useEffect(() => {
+    if (!registerFile) {
+      setRegisterPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(registerFile);
+    setRegisterPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [registerFile]);
+
+  useEffect(() => {
+    if (!identifyFile) {
+      setIdentifyPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(identifyFile);
+    setIdentifyPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [identifyFile]);
 
   async function handleRegister() {
     if (!registerName.trim()) { toast('Enter a name.', 'warning'); return; }
@@ -99,7 +120,7 @@ export default function FaceDatabase() {
 
   function drawAnnotations(results: IdentifyResult[]) {
     const canvas = canvasRef.current;
-    if (!canvas || !identifyFile) return;
+    if (!canvas || !identifyPreview) return;
     const img = new Image();
     img.onload = () => {
       canvas.width = img.naturalWidth;
@@ -119,15 +140,18 @@ export default function FaceDatabase() {
         ctx.fillText(`${r.name} ${(r.confidence * 100).toFixed(0)}%`, left + 4, bottom + 15);
       }
     };
-    img.src = URL.createObjectURL(identifyFile);
+    img.src = identifyPreview;
   }
 
   return (
     <motion.div {...PAGE} className="flex flex-col gap-6">
-      <div>
-        <h1 className="font-syne font-bold text-2xl text-white">Face Database</h1>
-        <p className="text-sm text-slate-500 mt-1">Register known faces and identify people in images.</p>
-      </div>
+      <PageHeader
+        icon={Database}
+        eyebrow="MODULE · 03"
+        title="Face Database"
+        accent="#10B981, #2DD4BF"
+        subtitle="Register known faces, then identify people in any image."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5">
         {/* Face grid */}
@@ -225,7 +249,7 @@ export default function FaceDatabase() {
               ref={regFileRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) { setRegisterFile(f); setRegisterPreview(URL.createObjectURL(f)); }
+                if (f) { setRegisterFile(f); }
                 e.target.value = '';
               }}
             />
@@ -285,7 +309,7 @@ export default function FaceDatabase() {
               ref={idFileRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) { setIdentifyFile(f); setIdentifyPreview(URL.createObjectURL(f)); setIdentifyResult(null); }
+                if (f) { setIdentifyFile(f); setIdentifyResult(null); }
                 e.target.value = '';
               }}
             />

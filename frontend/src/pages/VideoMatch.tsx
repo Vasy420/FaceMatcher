@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Download, ChevronRight, Clock } from 'lucide-react';
+import { Play, Download, ChevronRight, Clock, Film } from 'lucide-react';
 import DropZone from '../components/DropZone';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
+import PageHeader from '../components/PageHeader';
 import { useToast } from '../App';
 import { api, getStaticUrl } from '../lib/api';
 import { VideoMatchResponse, VideoMatchResult } from '../types';
@@ -102,11 +103,13 @@ export default function VideoMatch() {
 
   return (
     <motion.div {...PAGE} className="flex flex-col gap-6">
-      {/* Header */}
-      <div>
-        <h1 className="font-syne font-bold text-2xl text-white">Video Match</h1>
-        <p className="text-sm text-slate-500 mt-1">Scan a video for a reference face and extract matched frames.</p>
-      </div>
+      <PageHeader
+        icon={Film}
+        eyebrow="MODULE · 01"
+        title="Video Match"
+        accent="#3B82F6, #06B6D4"
+        subtitle="Scan a video for a reference face and extract matched frames with timestamps."
+      />
 
       {/* Upload + config */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

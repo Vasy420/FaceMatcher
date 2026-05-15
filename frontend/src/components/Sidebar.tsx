@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Film, Camera, Database, Smile, Crosshair } from 'lucide-react';
+import { Film, Camera, Database, Smile, Crosshair, Home } from 'lucide-react';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { checkHealth } from '../lib/api';
 
 const NAV = [
+  { to: '/', icon: Home, label: 'Home', end: true },
   { to: '/video', icon: Film, label: 'Video Match' },
   { to: '/live', icon: Camera, label: 'Live Camera' },
   { to: '/database', icon: Database, label: 'Face DB' },
@@ -43,10 +44,11 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
-        {NAV.map(({ to, icon: Icon, label }) => (
+        {NAV.map(({ to, icon: Icon, label, end }) => (
           <NavLink
             key={to}
             to={to}
+            end={end}
             className={({ isActive }) =>
               clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-sans font-medium transition-all duration-150',

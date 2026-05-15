@@ -3,10 +3,13 @@ import Sidebar from './Sidebar';
 import { checkHealth } from '../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 export default function Layout({ children }: { children: ReactNode }) {
   const [showBanner, setShowBanner] = useState(false);
   const [retryIn, setRetryIn] = useState(3);
+  const location = useLocation();
+  const isWelcome = location.pathname === '/';
 
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout>;
@@ -55,7 +58,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="flex-1 p-6 lg:p-8 max-w-[1200px] w-full">
+        <div className={isWelcome ? 'flex-1 w-full' : 'flex-1 p-6 lg:p-8 max-w-[1200px] w-full'}>
           {children}
         </div>
       </main>

@@ -2,6 +2,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { createContext, useCallback, useContext, useState } from 'react';
 import Layout from './components/Layout';
+import Welcome from './pages/Welcome';
 import VideoMatch from './pages/VideoMatch';
 import LiveMatch from './pages/LiveMatch';
 import FaceDatabase from './pages/FaceDatabase';
@@ -33,7 +34,7 @@ export default function App() {
       <Layout>
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<VideoMatch />} />
+            <Route path="/" element={<Welcome />} />
             <Route path="/video" element={<VideoMatch />} />
             <Route path="/live" element={<LiveMatch />} />
             <Route path="/database" element={<FaceDatabase />} />
