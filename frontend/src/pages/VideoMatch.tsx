@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Download, ChevronRight, Clock, Film } from 'lucide-react';
+import { Play, Download, ChevronRight, Clock, Film, Filter, SortDesc, Search, AlertCircle } from 'lucide-react';
 import DropZone from '../components/DropZone';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
 import PageHeader from '../components/PageHeader';
+import Chip from '../components/Chip';
+import EmptyState from '../components/EmptyState';
+import { recordActivity } from '../lib/activity';
 import { useToast } from '../App';
 import { api, getStaticUrl } from '../lib/api';
 import { VideoMatchResponse, VideoMatchResult } from '../types';
@@ -35,8 +38,17 @@ export default function VideoMatch() {
   const [progress, setProgress] = useState(0);
   const [msgIdx, setMsgIdx] = useState(0);
   const [result, setResult] = useState<VideoMatchResponse | null>(null);
+  const [minConf, setMinConf] = useState(0);
+  const [sortBy, setSortBy] = useState<'time' | 'conf'>('time');
+  const [view, setView] = useState<'grid' | 'timeline'>('grid');
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const msgRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const filteredMatches = (result?.matches ?? [])
+    .filter((m) => m.confidence >= minConf)
+    .sort((a, b) =>
+      sortBy === 'time' ? a.timestamp_seconds - b.timestamp_seconds : b.confidence - a.confidence,
+    );
 
   function startProgress() {
     setProgress(0);
@@ -77,6 +89,12 @@ export default function VideoMatch() {
       });
       stopProgress();
       setResult(data);
+      recordActivity({
+        kind: 'video',
+        title: `Video scan: ${data.matches.length} match${data.matches.length === 1 ? '' : 'es'}`,
+        detail: `${video.name} · ${data.total_frames_scanned} frames scanned · ${data.video_duration_seconds.toFixed(1)}s`,
+        meta: { matches: data.matches.length, frames: data.total_frames_scanned },
+      });
       if (data.matches.length === 0) {
         toast('No face matches found in video.', 'info');
       } else {
@@ -197,45 +215,116 @@ export default function VideoMatch() {
 
       {/* Results */}
       {result && !loading && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
           {/* Stats bar */}
-          <div className="glass p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[
-              { label: 'Matches', value: result.matches.length, highlight: result.matches.length > 0 },
-              { label: 'Frames Scanned', value: result.total_frames_scanned },
-              { label: 'Duration', value: formatTime(result.video_duration_seconds) },
-              { label: 'FPS', value: result.fps.toFixed(1) },
-            ].map((s) => (
-              <div key={s.label} className="flex flex-col gap-0.5">
-                <span className="text-xs font-mono text-slate-600 uppercase tracking-widest">{s.label}</span>
-                <span className={`font-syne font-bold text-xl ${s.highlight ? 'text-green-400' : 'text-white'}`}>
-                  {s.value}
-                </span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <ResultStat label="Matches" value={result.matches.length} highlight={result.matches.length > 0} accent="#10B981" />
+            <ResultStat label="Frames Scanned" value={result.total_frames_scanned} accent="#3B82F6" />
+            <ResultStat label="Duration" value={formatTime(result.video_duration_seconds)} accent="#8B5CF6" />
+            <ResultStat label="Source FPS" value={result.fps.toFixed(1)} accent="#F59E0B" />
           </div>
 
-          {/* Export */}
-          <div className="flex justify-end">
-            <button onClick={exportJSON} className="btn-ghost flex items-center gap-2 text-xs">
-              <Download size={14} /> Export JSON
-            </button>
-          </div>
-
-          {/* Timeline */}
           {result.matches.length > 0 ? (
-            <div className="overflow-x-auto pb-2">
-              <div className="flex gap-3 w-max">
-                {result.matches.map((m: VideoMatchResult, i: number) => (
-                  <MatchCard key={i} match={m} index={i} />
-                ))}
+            <>
+              {/* Filter bar */}
+              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter size={13} className="text-slate-500" />
+                  <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Min confidence</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {[0, 0.5, 0.7, 0.85].map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setMinConf(v)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all ${
+                        minConf === v
+                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-200'
+                          : 'border-white/10 text-slate-400 hover:border-white/25'
+                      }`}
+                    >
+                      {v === 0 ? 'all' : `${(v * 100).toFixed(0)}%+`}
+                    </button>
+                  ))}
+                </div>
+                <div className="w-px h-5 bg-white/10" />
+                <div className="flex items-center gap-2">
+                  <SortDesc size={13} className="text-slate-500" />
+                  <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Sort</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {(['time', 'conf'] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSortBy(s)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all ${
+                        sortBy === s
+                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-200'
+                          : 'border-white/10 text-slate-400 hover:border-white/25'
+                      }`}
+                    >
+                      {s === 'time' ? 'by time' : 'by confidence'}
+                    </button>
+                  ))}
+                </div>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => setView('grid')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono border ${
+                      view === 'grid'
+                        ? 'bg-white/10 border-white/20 text-white'
+                        : 'border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Grid
+                  </button>
+                  <button
+                    onClick={() => setView('timeline')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono border ${
+                      view === 'timeline'
+                        ? 'bg-white/10 border-white/20 text-white'
+                        : 'border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Timeline
+                  </button>
+                  <button onClick={exportJSON} className="btn-ghost flex items-center gap-1.5 text-[11px] font-mono">
+                    <Download size={12} /> JSON
+                  </button>
+                </div>
               </div>
-            </div>
+
+              {/* Timeline view */}
+              {view === 'timeline' && (
+                <TimelineView
+                  matches={filteredMatches}
+                  duration={result.video_duration_seconds}
+                />
+              )}
+
+              {/* Grid */}
+              {view === 'grid' && (
+                filteredMatches.length === 0 ? (
+                  <EmptyState
+                    icon={Search}
+                    title="No matches at this threshold"
+                    description="Lower the minimum confidence to see more results."
+                  />
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {filteredMatches.map((m, i) => (
+                      <MatchCard key={i} match={m} index={i} />
+                    ))}
+                  </div>
+                )
+              )}
+            </>
           ) : (
-            <div className="glass p-12 flex flex-col items-center gap-3">
-              <span className="text-4xl">🔍</span>
-              <p className="text-slate-400 font-sans text-sm">No face matches found. Try lowering the threshold.</p>
-            </div>
+            <EmptyState
+              icon={AlertCircle}
+              title="No face matches found"
+              description="Try lowering the threshold or upload a sharper reference image."
+            />
           )}
         </motion.div>
       )}
@@ -245,28 +334,122 @@ export default function VideoMatch() {
 
 function MatchCard({ match, index }: { match: VideoMatchResult; index: number }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
+    <motion.a
+      href={getStaticUrl(match.frame_url)}
+      target="_blank"
+      rel="noreferrer"
+      initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: index * 0.05 }}
-      className="glass glass-hover flex flex-col gap-2 p-3 w-[180px] shrink-0"
+      transition={{ delay: index * 0.03 }}
+      className="group flex flex-col gap-2 p-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all"
     >
-      <img
-        src={getStaticUrl(match.frame_url)}
-        alt={`Match at ${formatTime(match.timestamp_seconds)}`}
-        className="w-full h-[110px] object-cover rounded-xl bg-navy-800"
-      />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
-          <Clock size={11} />
-          {formatTime(match.timestamp_seconds)}
+      <div className="relative">
+        <img
+          src={getStaticUrl(match.frame_url)}
+          alt={`Match at ${formatTime(match.timestamp_seconds)}`}
+          className="w-full aspect-video object-cover rounded-lg bg-navy-800 ring-1 ring-white/5"
+        />
+        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-white flex items-center gap-1">
+          <Clock size={9} /> {formatTime(match.timestamp_seconds)}
         </div>
-        <ConfidenceRing confidence={match.confidence} size={44} />
+        <div className="absolute bottom-1.5 right-1.5">
+          <ConfidenceRing confidence={match.confidence} size={36} />
+        </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        <ChevronRight size={11} className="text-slate-600" />
-        <span className="text-xs font-mono text-slate-600">frame {match.frame_number}</span>
+      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+        <span>frame · {match.frame_number}</span>
+        <span className="opacity-0 group-hover:opacity-100 text-blue-300 flex items-center gap-0.5 transition-opacity">
+          open <ChevronRight size={10} />
+        </span>
       </div>
-    </motion.div>
+    </motion.a>
+  );
+}
+
+function ResultStat({
+  label,
+  value,
+  highlight,
+  accent,
+}: {
+  label: string;
+  value: React.ReactNode;
+  highlight?: boolean;
+  accent: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] p-4">
+      <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-25" style={{ background: accent }} />
+      <p className="relative text-[10px] font-mono text-slate-500 tracking-widest uppercase">{label}</p>
+      <p className={`relative font-syne font-bold text-2xl mt-1.5 leading-none ${highlight ? 'text-emerald-300' : 'text-white'}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function TimelineView({ matches, duration }: { matches: VideoMatchResult[]; duration: number }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Match timeline</span>
+        <span className="text-[10px] font-mono text-slate-500">
+          {matches.length} marker{matches.length === 1 ? '' : 's'} over {formatTime(duration)}
+        </span>
+      </div>
+      <div className="relative h-20">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-blue-500/0 via-blue-500/40 to-blue-500/0" />
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between text-[9px] font-mono text-slate-600">
+          {[0, 0.25, 0.5, 0.75, 1].map((p) => (
+            <div key={p} className="flex flex-col items-center">
+              <div className="w-px h-2 bg-white/10 mb-1" />
+              <span>{formatTime(duration * p)}</span>
+            </div>
+          ))}
+        </div>
+        {matches.map((m, i) => {
+          const left = (m.timestamp_seconds / duration) * 100;
+          return (
+            <a
+              key={i}
+              href={getStaticUrl(m.frame_url)}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute top-1/2 -translate-y-1/2 group"
+              style={{ left: `${left}%` }}
+              title={`${formatTime(m.timestamp_seconds)} · ${(m.confidence * 100).toFixed(0)}%`}
+            >
+              <div
+                className="w-2.5 h-2.5 rounded-full ring-2 ring-black/40 hover:scale-150 transition-transform"
+                style={{ background: m.confidence > 0.7 ? '#34d399' : m.confidence > 0.5 ? '#fbbf24' : '#fb7185' }}
+              />
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                {formatTime(m.timestamp_seconds)} · {(m.confidence * 100).toFixed(0)}%
+              </div>
+            </a>
+          );
+        })}
+      </div>
+      {matches.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {matches.slice(0, 12).map((m, i) => (
+            <a
+              key={i}
+              href={getStaticUrl(m.frame_url)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 hover:border-white/25 text-[10px] font-mono text-slate-300"
+            >
+              <Clock size={9} />
+              {formatTime(m.timestamp_seconds)}
+              <span className="text-slate-500">·</span>
+              <span style={{ color: m.confidence > 0.7 ? '#34d399' : m.confidence > 0.5 ? '#fbbf24' : '#fb7185' }}>
+                {(m.confidence * 100).toFixed(0)}%
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

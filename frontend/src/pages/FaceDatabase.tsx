@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Search, UserCheck, Users, Database } from 'lucide-react';
+import { Plus, Trash2, Search, UserCheck, Users, Database, X, Calendar } from 'lucide-react';
 import { useToast } from '../App';
 import { api, getStaticUrl } from '../lib/api';
 import { Face, IdentifyResponse, IdentifyResult } from '../types';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
 import PageHeader from '../components/PageHeader';
+import Chip from '../components/Chip';
+import EmptyState from '../components/EmptyState';
+import { recordActivity } from '../lib/activity';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -26,9 +29,13 @@ export default function FaceDatabase() {
   const [identifyPreview, setIdentifyPreview] = useState<string | null>(null);
   const [identifying, setIdentifying] = useState(false);
   const [identifyResult, setIdentifyResult] = useState<IdentifyResponse | null>(null);
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<Face | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const regFileRef = useRef<HTMLInputElement>(null);
   const idFileRef = useRef<HTMLInputElement>(null);
+
+  const filtered = faces.filter((f) => f.name.toLowerCase().includes(query.toLowerCase()));
 
   async function loadFaces() {
     setLoadingFaces(true);
@@ -77,6 +84,7 @@ export default function FaceDatabase() {
       fd.append('name', registerName.trim());
       fd.append('image', registerFile);
       await api.post('/api/faces/register', fd);
+      recordActivity({ kind: 'register', title: `Registered ${registerName.trim()}`, detail: 'Added to local SQLite gallery' });
       toast(`"${registerName}" registered!`, 'success');
       setRegisterName('');
       setRegisterFile(null);
@@ -94,6 +102,7 @@ export default function FaceDatabase() {
     try {
       await api.delete(`/api/faces/${id}`);
       setFaces((p) => p.filter((f) => f.id !== id));
+      recordActivity({ kind: 'delete', title: `Removed ${name}`, detail: 'Deleted from gallery' });
       toast(`"${name}" removed.`, 'success');
     } catch {
       toast('Delete failed.', 'error');
@@ -109,6 +118,13 @@ export default function FaceDatabase() {
       fd.append('image', identifyFile);
       const { data } = await api.post<IdentifyResponse>('/api/faces/identify', fd);
       setIdentifyResult(data);
+      const named = data.results.filter((r) => r.name !== 'Unknown').length;
+      recordActivity({
+        kind: 'identify',
+        title: `Identified ${named}/${data.face_count} face${data.face_count === 1 ? '' : 's'}`,
+        detail: data.results.map((r) => r.name).filter((n) => n !== 'Unknown').slice(0, 3).join(', ') || 'No matches in DB',
+        meta: { matches: named, total: data.face_count },
+      });
       toast(`${data.face_count} face(s) analysed.`, 'info');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Identification failed.';
@@ -153,62 +169,90 @@ export default function FaceDatabase() {
         subtitle="Register known faces, then identify people in any image."
       />
 
+      {/* Stat strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <DBStat label="Enrolled" value={faces.length} accent="#10B981" />
+        <DBStat label="Matching" value={filtered.length} accent="#3B82F6" />
+        <DBStat label="Storage" value="SQLite" accent="#8B5CF6" />
+        <DBStat label="Engine" value="128-D" accent="#F59E0B" />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5">
         {/* Face grid */}
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users size={15} className="text-slate-500" />
-              <span className="text-sm font-sans text-slate-400">
-                {faces.length} registered face{faces.length !== 1 ? 's' : ''}
-              </span>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 flex items-center gap-2 h-10 rounded-xl border border-white/8 bg-white/[0.02] focus-within:border-blue-500/40 transition-colors px-3">
+              <Search size={14} className="text-slate-500" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name…"
+                className="bg-transparent outline-none flex-1 text-sm text-slate-200 placeholder:text-slate-600"
+              />
+              {query && (
+                <button onClick={() => setQuery('')} className="text-slate-500 hover:text-white">
+                  <X size={13} />
+                </button>
+              )}
             </div>
+            <Chip variant="blue" icon={<Users size={10} />}>
+              {filtered.length} / {faces.length}
+            </Chip>
           </div>
 
           {loadingFaces ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <Skeleton className="h-[140px]" count={6} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              <Skeleton className="h-[160px]" count={8} />
             </div>
           ) : faces.length === 0 ? (
-            <div className="glass p-12 flex flex-col items-center gap-4">
-              <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
-                <circle cx="40" cy="40" r="38" stroke="rgba(59,130,246,0.15)" strokeWidth="2" strokeDasharray="6 4" />
-                <circle cx="40" cy="32" r="12" stroke="rgba(59,130,246,0.3)" strokeWidth="1.5" />
-                <path d="M18 62c0-12 10-20 22-20s22 8 22 20" stroke="rgba(59,130,246,0.3)" strokeWidth="1.5" strokeLinecap="round" />
-                <circle cx="40" cy="32" r="5" fill="rgba(59,130,246,0.2)" />
-              </svg>
-              <div className="text-center">
-                <p className="text-slate-400 font-sans text-sm font-medium">No faces registered yet</p>
-                <p className="text-slate-600 text-xs font-mono mt-1">Use the form to add known faces</p>
-              </div>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No faces registered"
+              description="Use the right panel to upload a photo and register a known face."
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={Search}
+              title="No matches for that query"
+              description={`Nothing matches "${query}". Clear the search to see all faces.`}
+            />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               <AnimatePresence>
-                {faces.map((f) => (
-                  <motion.div
+                {filtered.map((f) => (
+                  <motion.button
                     key={f.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
+                    layout
+                    onClick={() => setSelected(f)}
+                    initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    className="glass glass-hover group relative flex flex-col gap-2 p-3 overflow-hidden"
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.25 }}
+                    className="group relative flex flex-col gap-2 p-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all text-left overflow-hidden"
                   >
-                    <img
-                      src={getStaticUrl(f.image_path)}
-                      alt={f.name}
-                      className="w-full h-[100px] object-cover rounded-xl bg-navy-800"
-                    />
+                    <div className="relative">
+                      <img
+                        src={getStaticUrl(f.image_path)}
+                        alt={f.name}
+                        className="w-full aspect-[5/4] object-cover rounded-lg bg-navy-800 ring-1 ring-white/5"
+                      />
+                      <div className="absolute inset-0 rounded-lg ring-1 ring-emerald-500/0 group-hover:ring-emerald-500/30 transition-colors pointer-events-none" />
+                      <span className="absolute top-1.5 left-1.5 text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/70 text-emerald-300 border border-emerald-500/30">
+                        #{f.id}
+                      </span>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); handleDelete(f.id, f.name); }}
+                        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-black/70 hover:bg-rose-500/80 text-white rounded-md p-1 transition-all cursor-pointer"
+                      >
+                        <Trash2 size={11} />
+                      </span>
+                    </div>
                     <p className="font-syne font-semibold text-sm text-white truncate">{f.name}</p>
-                    <p className="text-[10px] font-mono text-slate-600">
-                      {new Date(f.created_at).toLocaleDateString()}
-                    </p>
-                    <button
-                      onClick={() => handleDelete(f.id, f.name)}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-black/70 hover:bg-red-500/80 text-white rounded-full p-1.5 transition-all duration-150"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </motion.div>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                      <span className="flex items-center gap-1"><Calendar size={9} />{new Date(f.created_at).toLocaleDateString()}</span>
+                      <span className="opacity-0 group-hover:opacity-100 text-blue-300 transition-opacity">view →</span>
+                    </div>
+                  </motion.button>
                 ))}
               </AnimatePresence>
             </div>
@@ -218,10 +262,13 @@ export default function FaceDatabase() {
         {/* Right panel */}
         <div className="flex flex-col gap-4">
           {/* Register */}
-          <div className="glass p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Plus size={14} className="text-blue-400" />
-              <span className="text-xs font-mono text-slate-400 uppercase tracking-widest">Register Face</span>
+          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Plus size={14} className="text-emerald-300" />
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-widest">Enroll Face</span>
+              </div>
+              <Chip variant="emerald">/register</Chip>
             </div>
 
             <label
@@ -273,10 +320,13 @@ export default function FaceDatabase() {
           </div>
 
           {/* Identify */}
-          <div className="glass p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Search size={14} className="text-blue-400" />
-              <span className="text-xs font-mono text-slate-400 uppercase tracking-widest">Identify Faces</span>
+          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Search size={14} className="text-blue-300" />
+                <span className="text-xs font-mono text-slate-300 uppercase tracking-widest">Identify in Image</span>
+              </div>
+              <Chip variant="blue">/identify</Chip>
             </div>
 
             <label
@@ -339,6 +389,90 @@ export default function FaceDatabase() {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {selected && (
+          <FaceDrawer
+            face={selected}
+            onClose={() => setSelected(null)}
+            onDelete={() => {
+              handleDelete(selected.id, selected.name);
+              setSelected(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
+  );
+}
+
+function DBStat({ label, value, accent }: { label: string; value: React.ReactNode; accent: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] p-4">
+      <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-20" style={{ background: accent }} />
+      <p className="relative text-[10px] font-mono text-slate-500 tracking-widest uppercase">{label}</p>
+      <p className="relative font-syne font-bold text-xl text-white mt-1 leading-none">{value}</p>
+    </div>
+  );
+}
+
+function FaceDrawer({ face, onClose, onDelete }: { face: Face; onClose: () => void; onDelete: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-40 flex justify-end"
+      style={{ background: 'rgba(2,6,16,0.55)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ x: 360 }}
+        animate={{ x: 0 }}
+        exit={{ x: 360 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 32 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-[360px] h-full overflow-y-auto border-l border-white/10"
+        style={{ background: 'linear-gradient(180deg, rgba(20,28,52,0.95), rgba(13,18,38,0.95))' }}
+      >
+        <div className="flex items-center justify-between px-5 h-14 border-b border-white/8">
+          <span className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase">Face Profile</span>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5">
+          <div className="relative rounded-xl overflow-hidden ring-1 ring-white/10">
+            <img src={getStaticUrl(face.image_path)} alt={face.name} className="w-full aspect-square object-cover" />
+            <div className="absolute inset-0 ring-1 ring-blue-500/20 rounded-xl pointer-events-none" />
+            <div className="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-black/70 backdrop-blur text-[10px] font-mono text-emerald-300 border border-emerald-500/30">
+              ID #{face.id}
+            </div>
+          </div>
+          <h3 className="font-syne font-bold text-2xl text-white mt-4">{face.name}</h3>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <DrawerMeta label="Enrolled" value={new Date(face.created_at).toLocaleDateString()} />
+            <DrawerMeta label="Image hash" value={face.image_path.split('/').pop()?.slice(0, 8) ?? '—'} />
+            <DrawerMeta label="Encoding" value="128-D dlib" />
+            <DrawerMeta label="Status" value={<span className="text-emerald-300">Active</span>} />
+          </div>
+          <button
+            onClick={onDelete}
+            className="mt-6 w-full h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 font-syne text-sm font-semibold transition-all flex items-center justify-center gap-2"
+          >
+            <Trash2 size={14} /> Remove from database
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function DrawerMeta({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-2">
+      <p className="text-[9px] font-mono text-slate-500 tracking-widest uppercase">{label}</p>
+      <p className="text-xs font-mono text-slate-200 mt-1 truncate">{value}</p>
+    </div>
   );
 }

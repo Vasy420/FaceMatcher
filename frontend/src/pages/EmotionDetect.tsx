@@ -1,11 +1,14 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Camera, X, Zap, Smile } from 'lucide-react';
+import { Upload, Camera, X, Zap, Smile, Activity, Cpu, Eye } from 'lucide-react';
 import { useToast } from '../App';
 import { api } from '../lib/api';
 import { EmotionResponse, EmotionFace } from '../types';
 import { EMOTION_EMOJI, EMOTION_COLOR } from '../lib/utils';
 import PageHeader from '../components/PageHeader';
+import Chip from '../components/Chip';
+import EmptyState from '../components/EmptyState';
+import { recordActivity } from '../lib/activity';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -36,6 +39,9 @@ export default function EmotionDetect() {
   const liveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const detectingRef = useRef(false);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  const liveLoggedRef = useRef(false);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [lastLatency, setLastLatency] = useState<number | null>(null);
 
   function drawOverlay(faces: EmotionFace[]) {
     const canvas = overlayRef.current;
@@ -111,24 +117,46 @@ export default function EmotionDetect() {
       try {
         const fd = new FormData();
         fd.append('image', new File([blob], 'live.jpg', { type: 'image/jpeg' }));
+        const t = performance.now();
         const { data } = await api.post<EmotionResponse>('/api/emotion/detect', fd);
+        setLastLatency(Math.round(performance.now() - t));
+        setSessionCount((c) => c + 1);
+        if (!data.face_detected || !data.faces || data.faces.length === 0) {
+          setResult({ dominant_emotion: '', emotions: {}, face_detected: false, faces: [] });
+          detectingRef.current = false;
+          setLiveDetecting(false);
+          return;
+        }
         setResult(data);
+        if (!liveLoggedRef.current && data.face_detected && data.dominant_emotion) {
+          liveLoggedRef.current = true;
+          recordActivity({
+            kind: 'emotion',
+            title: `Live emotion session`,
+            detail: `First read: ${data.dominant_emotion}`,
+            meta: { dominant: data.dominant_emotion },
+          });
+        }
       } catch { /* silent on individual frame errors */ }
       finally {
         detectingRef.current = false;
         setLiveDetecting(false);
       }
-    }, 'image/jpeg', 0.7);
+    }, 'image/jpeg', 0.92);
   }
 
   async function startWebcam() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
       streamRef.current = stream;
       videoRef.current!.srcObject = stream;
       await videoRef.current!.play();
       setWebcamMode(true);
       setResult(null);
+      liveLoggedRef.current = false;
+      setSessionCount(0);
       setTimeout(() => {
         captureAndDetect();
         liveIntervalRef.current = setInterval(captureAndDetect, 1000);
@@ -153,8 +181,16 @@ export default function EmotionDetect() {
     try {
       const fd = new FormData();
       fd.append('image', file);
+      const t = performance.now();
       const { data } = await api.post<EmotionResponse>('/api/emotion/detect', fd);
+      setLastLatency(Math.round(performance.now() - t));
       setResult(data);
+      recordActivity({
+        kind: 'emotion',
+        title: `Detected: ${data.dominant_emotion || 'no face'}`,
+        detail: file.name,
+        meta: { dominant: data.dominant_emotion || 'none' },
+      });
       if (preview) {
         const item: HistoryItem = {
           id: Math.random().toString(36).slice(2),
@@ -187,27 +223,35 @@ export default function EmotionDetect() {
         subtitle="Live webcam emotion analysis or upload a photo — powered by DeepFace + MTCNN."
       />
 
+      {/* Telemetry strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <EmoTile icon={Activity} label="Session reads" value={sessionCount} accent="#F59E0B" />
+        <EmoTile icon={Eye} label="Faces detected" value={result?.faces?.length ?? 0} accent="#3B82F6" />
+        <EmoTile icon={Cpu} label="Inference" value={lastLatency !== null ? `${lastLatency} ms` : '—'} accent="#8B5CF6" />
+        <EmoTile icon={Smile} label="Mode" value={webcamMode ? 'Live' : 'Upload'} accent="#10B981" />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-5">
         {/* Upload / webcam */}
         <div className="flex flex-col gap-4">
-          <div className="glass p-4 flex flex-col gap-3">
+          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-col gap-3">
             {/* Toggle */}
-            <div className="flex gap-2">
+            <div className="flex gap-1.5 p-1 rounded-xl border border-white/8 bg-white/[0.02]">
               <button
                 onClick={() => { stopWebcam(); }}
-                className={`flex-1 py-2 text-xs font-mono rounded-xl border transition-all duration-150 ${
-                  !webcamMode ? 'bg-blue-600/15 border-blue-500/40 text-blue-300' : 'border-blue-500/10 text-slate-500 hover:text-slate-300'
+                className={`flex-1 py-1.5 text-xs font-mono rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
+                  !webcamMode ? 'bg-white/[0.07] text-white' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <Upload size={12} className="inline mr-1.5" />Upload
+                <Upload size={12} />Upload
               </button>
               <button
                 onClick={webcamMode ? stopWebcam : startWebcam}
-                className={`flex-1 py-2 text-xs font-mono rounded-xl border transition-all duration-150 ${
-                  webcamMode ? 'bg-blue-600/15 border-blue-500/40 text-blue-300' : 'border-blue-500/10 text-slate-500 hover:text-slate-300'
+                className={`flex-1 py-1.5 text-xs font-mono rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
+                  webcamMode ? 'bg-white/[0.07] text-white' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <Camera size={12} className="inline mr-1.5" />Webcam
+                <Camera size={12} />Webcam
               </button>
             </div>
 
@@ -291,55 +335,91 @@ export default function EmotionDetect() {
 
         {/* Results */}
         <AnimatePresence mode="wait">
-          {result ? (
+          {result && result.face_detected ? (
             <motion.div
               key="result"
-              initial={{ opacity: 0, scale: 0.97 }}
+              initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.97 }}
+              exit={{ opacity: 0, scale: 0.98 }}
               className="flex flex-col gap-4"
             >
               {/* Dominant emotion hero */}
-              <div className="glass p-6 flex flex-col items-center gap-3 text-center">
-                <div className="text-7xl">
-                  {EMOTION_EMOJI[result.dominant_emotion] ?? '😐'}
-                </div>
-                <p
-                  className="font-syne font-bold text-2xl uppercase tracking-widest transition-colors duration-500"
-                  style={{ color: EMOTION_COLOR[result.dominant_emotion] ?? '#94a3b8' }}
+              <div
+                className="relative overflow-hidden rounded-2xl border border-white/8 p-6 flex items-center gap-5"
+                style={{
+                  background: `linear-gradient(135deg, ${EMOTION_COLOR[result.dominant_emotion] ?? '#1e293b'}1F, rgba(13,18,38,0.4))`,
+                }}
+              >
+                <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl opacity-30" style={{ background: EMOTION_COLOR[result.dominant_emotion] ?? '#94a3b8' }} />
+                <motion.div
+                  key={result.dominant_emotion}
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 240, damping: 22 }}
+                  className="relative w-24 h-24 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-6xl shrink-0"
                 >
-                  {result.dominant_emotion}
-                </p>
-                {!result.face_detected && (
-                  <p className="text-xs font-mono text-amber-400">No face confidently detected</p>
-                )}
+                  {EMOTION_EMOJI[result.dominant_emotion] ?? '😐'}
+                </motion.div>
+                <div className="relative flex-1 min-w-0">
+                  <p className="text-[10px] font-mono text-slate-400 tracking-[0.2em] uppercase mb-1.5">
+                    Dominant signal
+                  </p>
+                  <p
+                    className="font-syne font-bold text-3xl tracking-tight capitalize"
+                    style={{ color: EMOTION_COLOR[result.dominant_emotion] ?? '#94a3b8' }}
+                  >
+                    {result.dominant_emotion || 'unknown'}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Chip variant={result.face_detected ? 'emerald' : 'amber'}>
+                      {result.face_detected ? 'Face detected' : 'No face'}
+                    </Chip>
+                    <Chip>DeepFace · MTCNN</Chip>
+                    {result.faces?.length ? <Chip variant="blue">{result.faces.length} region(s)</Chip> : null}
+                  </div>
+                </div>
               </div>
 
               {/* Bar chart */}
-              <div className="glass p-4 flex flex-col gap-3">
-                <span className="text-xs font-mono text-slate-400 uppercase tracking-widest">All Emotions</span>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase">Probability distribution</span>
+                  <Chip>7 classes</Chip>
+                </div>
                 <div className="flex flex-col gap-2.5">
                   {sorted.map(([emo, val], i) => (
                     <div key={emo} className="flex items-center gap-3">
-                      <span className="text-lg w-8">{EMOTION_EMOJI[emo] ?? '😐'}</span>
-                      <div className="flex-1 flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
-                          <motion.div
-                            className="h-full rounded-full"
-                            style={{ background: EMOTION_COLOR[emo] ?? '#94a3b8' }}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${val * 100}%` }}
-                            transition={{ delay: i * 0.03, duration: 0.4, ease: 'easeOut' }}
-                          />
-                        </div>
-                        <span className="text-xs font-mono text-slate-400 w-10 text-right">
-                          {(val * 100).toFixed(1)}%
-                        </span>
+                      <span className="text-base w-7 text-center">{EMOTION_EMOJI[emo] ?? '😐'}</span>
+                      <span className="text-xs text-slate-400 capitalize w-16">{emo}</span>
+                      <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: EMOTION_COLOR[emo] ?? '#94a3b8' }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${val * 100}%` }}
+                          transition={{ delay: i * 0.04, duration: 0.5, ease: 'easeOut' }}
+                        />
                       </div>
+                      <span className="text-[11px] font-mono text-slate-300 w-12 text-right tabular-nums">
+                        {(val * 100).toFixed(1)}%
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* Insights */}
+              {sorted.length >= 2 && (
+                <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5">
+                  <span className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase">Insight</span>
+                  <p className="text-sm text-slate-300 mt-2 leading-relaxed">
+                    <span className="capitalize text-white font-semibold">{sorted[0][0]}</span> dominates at{' '}
+                    <span className="font-mono text-blue-300">{(sorted[0][1] * 100).toFixed(1)}%</span>, leading{' '}
+                    <span className="capitalize text-white">{sorted[1][0]}</span> by{' '}
+                    <span className="font-mono text-blue-300">{((sorted[0][1] - sorted[1][1]) * 100).toFixed(1)} pts</span>.
+                  </p>
+                </div>
+              )}
             </motion.div>
           ) : (
             <motion.div
@@ -347,17 +427,51 @@ export default function EmotionDetect() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="glass p-12 flex flex-col items-center justify-center gap-4 text-center min-h-[300px]"
             >
-              <div className="text-5xl animate-float">😶</div>
-              <p className="text-slate-500 text-sm font-sans">
-                {webcamMode ? 'Waiting for first detection…' : 'Upload an image and click Detect Emotion'}
-              </p>
-              <p className="text-slate-700 text-xs font-mono">7 emotions · DeepFace engine</p>
+              <EmptyState
+                icon={Smile}
+                title={
+                  webcamMode
+                    ? result
+                      ? 'No face in frame'
+                      : 'Waiting for first read…'
+                    : 'Awaiting input'
+                }
+                description={
+                  webcamMode
+                    ? result
+                      ? 'Detector ran but no face was localised. Move into frame, check lighting, or look toward the camera.'
+                      : 'Stand in frame — analysis runs every second.'
+                    : 'Drop an image or switch to Webcam mode to start analysis.'
+                }
+              />
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </motion.div>
+  );
+}
+
+function EmoTile({
+  icon: Icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: typeof Smile;
+  label: string;
+  value: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] p-3.5">
+      <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-25" style={{ background: accent }} />
+      <div className="relative w-7 h-7 rounded-md flex items-center justify-center border border-white/10" style={{ background: `${accent}1A` }}>
+        <Icon size={13} style={{ color: accent }} />
+      </div>
+      <p className="relative text-[10px] font-mono text-slate-500 tracking-widest uppercase mt-2.5">{label}</p>
+      <p className="relative font-syne font-bold text-lg text-white mt-1 leading-none">{value}</p>
+    </div>
   );
 }

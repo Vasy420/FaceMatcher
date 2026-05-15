@@ -18,13 +18,19 @@ async def detect_emotion(image: UploadFile = File(...)):
         bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         cv2.imwrite(str(tmp), bgr)
 
-        results = DeepFace.analyze(
-            img_path=str(tmp),
-            actions=["emotion"],
-            enforce_detection=False,
-            detector_backend="mtcnn",
-            silent=True,
-        )
+        img_h, img_w = img.shape[:2]
+
+        try:
+            results = DeepFace.analyze(
+                img_path=str(tmp),
+                actions=["emotion"],
+                enforce_detection=True,
+                detector_backend="mtcnn",
+                silent=True,
+            )
+        except (ValueError, Exception):
+            results = []
+
         if not isinstance(results, list):
             results = [results]
 
@@ -33,18 +39,25 @@ async def detect_emotion(image: UploadFile = File(...)):
             emotions: dict = r.get("emotion", {})
             if not emotions:
                 continue
+            region = r.get("region", {})
+            rx = int(region.get("x", 0))
+            ry = int(region.get("y", 0))
+            rw = int(region.get("w", 0))
+            rh = int(region.get("h", 0))
+            if rw <= 0 or rh <= 0:
+                continue
+            # Guard against whole-image fallback (detector failed)
+            if rw >= img_w * 0.95 and rh >= img_h * 0.95:
+                continue
+            # Reject very small detections (false positives)
+            if rw < 40 or rh < 40:
+                continue
             total = sum(emotions.values()) or 1
             normalised = {k: round(v / total, 4) for k, v in emotions.items()}
-            region = r.get("region", {})
             faces.append({
                 "dominant_emotion": r.get("dominant_emotion", ""),
                 "emotions": normalised,
-                "region": {
-                    "x": int(region.get("x", 0)),
-                    "y": int(region.get("y", 0)),
-                    "w": int(region.get("w", 0)),
-                    "h": int(region.get("h", 0)),
-                },
+                "region": {"x": rx, "y": ry, "w": rw, "h": rh},
             })
 
         if faces:
