@@ -2,7 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import face_recognition
 import numpy as np
 import time
-from utils.face_utils import decode_base64_image, distance_to_confidence
+from utils.face_utils import decode_base64_image, distance_to_confidence, resize_if_large
 
 router = APIRouter(tags=["live"])
 
@@ -24,7 +24,7 @@ async def live_match(websocket: WebSocket):
             if msg_type == "init":
                 b64 = msg.get("reference_image", "")
                 try:
-                    img = decode_base64_image(b64)
+                    img = resize_if_large(decode_base64_image(b64), 800)
                     encs = face_recognition.face_encodings(img)
                     if not encs:
                         await websocket.send_json({"error": "No face in reference image."})
@@ -44,19 +44,21 @@ async def live_match(websocket: WebSocket):
                 b64 = msg.get("data", "")
                 try:
                     img = decode_base64_image(b64)
+                    work = resize_if_large(img, 640)
+                    scale = img.shape[1] / work.shape[1]
                 except Exception:
                     await websocket.send_json({"error": "Bad frame data."})
                     continue
 
-                locations = face_recognition.face_locations(img)
-                encodings = face_recognition.face_encodings(img, locations)
+                locations = face_recognition.face_locations(work, model="hog")
+                encodings = face_recognition.face_encodings(work, locations)
                 processing_ms = int((time.monotonic() - t0) * 1000)
 
                 results = []
                 for loc, enc in zip(locations, encodings):
                     dist = float(face_recognition.face_distance([ref_enc], enc)[0])
                     confidence = distance_to_confidence(dist)
-                    top, right, bottom, left = loc
+                    top, right, bottom, left = [int(v * scale) for v in loc]
                     results.append({
                         "bbox": [top, right, bottom, left],
                         "confidence": round(confidence, 3),

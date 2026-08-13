@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { ReactNode, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Camera, X, Zap, Smile, Activity, Cpu, Eye } from 'lucide-react';
 import { useToast } from '../App';
@@ -87,14 +87,26 @@ export default function EmotionDetect() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  function acceptImage(f: File) {
+    if (!f.type.startsWith('image/') && !f.name.toLowerCase().match(/\.(jpe?g|png|webp|bmp)$/)) {
+      toast('Please choose a JPG, PNG, or WebP image.', 'warning');
+      return;
+    }
     if (f.size > 5 * 1024 * 1024) { toast('Image too large (max 5 MB).', 'error'); return; }
     setFile(f);
     setResult(null);
+  }
+
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) acceptImage(f);
     e.target.value = '';
   }
+
+  useEffect(() => () => {
+    if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
 
   useEffect(() => {
     if (webcamMode && result?.faces) {
@@ -287,6 +299,12 @@ export default function EmotionDetect() {
                   <label
                     className="flex flex-col items-center justify-center gap-2 h-[180px] border-2 border-dashed border-blue-500/20 rounded-xl cursor-pointer hover:border-blue-500/40 transition-colors"
                     onClick={() => fileRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files[0];
+                      if (f) acceptImage(f);
+                    }}
                   >
                     <Upload size={24} className="text-slate-600" />
                     <span className="text-xs text-slate-600 font-sans">Click or drag an image</span>
@@ -461,7 +479,7 @@ function EmoTile({
 }: {
   icon: typeof Smile;
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   accent: string;
 }) {
   return (

@@ -13,8 +13,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -29,7 +29,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-package-lock.json
 yarn.lock
 
 # Vite / React
@@ -63,3 +62,14 @@ logs/
 .env
 .env.local
 .env.*.local
+
+# Local toolchains / caches (do not ship)
+backend/conda/
+.mamba/
+.tools/
+
+# Runtime face/frame dumps (keep placeholders)
+backend/static/faces/*
+!backend/static/faces/.gitkeep
+backend/static/frames/*
+!backend/static/frames/.gitkeep

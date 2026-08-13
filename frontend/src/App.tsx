@@ -7,6 +7,7 @@ import VideoMatch from './pages/VideoMatch';
 import LiveMatch from './pages/LiveMatch';
 import FaceDatabase from './pages/FaceDatabase';
 import EmotionDetect from './pages/EmotionDetect';
+import NotFound from './pages/NotFound';
 import { ToastItem, ToastType } from './types';
 import { uid } from './lib/utils';
 import ToastContainer from './components/Toast';
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/live" element={<LiveMatch />} />
             <Route path="/database" element={<FaceDatabase />} />
             <Route path="/emotion" element={<EmotionDetect />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AnimatePresence>
       </Layout>

@@ -1,0 +1,15 @@
+.git
+.claude
+**/.venv
+**/venv
+**/__pycache__
+**/node_modules
+**/dist
+**/*.db
+**/*.sqlite
+**/*.whl
+**/.env
+**/.env.local
+frontend/.env.production
+backend/static/frames
+backend/static/faces
