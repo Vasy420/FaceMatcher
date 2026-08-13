@@ -1,8 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pathlib import Path
 import uuid
-from database import insert_face, delete_face, list_faces, UPLOADS_DIR
-from utils.face_utils import encode_face_from_bytes, encode_frame_jpeg, load_image_bytes
+from database import insert_face, delete_face, list_faces
+from utils.face_utils import (
+    clamp_upload,
+    encode_face_from_bytes,
+    load_image_bytes,
+    save_rgb_jpeg,
+)
 import face_recognition
 import numpy as np
 
@@ -10,18 +15,29 @@ router = APIRouter(prefix="/api/faces", tags=["faces"])
 
 STATIC_FACES = Path(__file__).parent.parent / "static" / "faces"
 STATIC_FACES.mkdir(parents=True, exist_ok=True)
+MAX_IMAGE = 8 * 1024 * 1024
 
 
 @router.post("/register")
 async def register_face(name: str = Form(...), image: UploadFile = File(...)):
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name is required.")
+    if len(name) > 80:
+        raise HTTPException(status_code=422, detail="Name must be 80 characters or fewer.")
+
     data = await image.read()
+    clamp_upload(data, MAX_IMAGE, "Image")
     encoding = encode_face_from_bytes(data)
     if encoding is None:
         raise HTTPException(status_code=422, detail="No face detected in the provided image.")
 
     filename = f"{uuid.uuid4().hex}.jpg"
     save_path = STATIC_FACES / filename
-    save_path.write_bytes(data)
+    try:
+        save_rgb_jpeg(save_path, load_image_bytes(data))
+    except Exception:
+        save_path.write_bytes(data)
 
     image_url = f"/static/faces/{filename}"
     face_id = insert_face(name, encoding, image_url)
@@ -48,13 +64,25 @@ async def identify_faces(image: UploadFile = File(...)):
     from utils.face_utils import distance_to_confidence
 
     data = await image.read()
+    clamp_upload(data, MAX_IMAGE, "Image")
     img = load_image_bytes(data)
 
     locations = face_recognition.face_locations(img)
     encodings = face_recognition.face_encodings(img, locations)
 
     if not FACE_CACHE:
-        return {"results": [], "face_count": len(locations)}
+        return {
+            "results": [
+                {
+                    "bbox": [int(v) for v in loc],
+                    "name": "Unknown",
+                    "confidence": 0.0,
+                    "face_id": None,
+                }
+                for loc in locations
+            ],
+            "face_count": len(locations),
+        }
 
     known_ids = list(FACE_CACHE.keys())
     known_names = [FACE_CACHE[i][0] for i in known_ids]

@@ -23,7 +23,7 @@ interface Props {
 
 export default function ToastContainer({ toasts, onRemove }: Props) {
   return (
-    <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-20 md:bottom-5 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-2rem)]">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

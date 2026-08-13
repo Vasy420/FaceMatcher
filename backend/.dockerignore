@@ -1,0 +1,12 @@
+__pycache__
+*.py[cod]
+*.db
+*.sqlite
+*.sqlite3
+*.whl
+venv
+.env
+static/frames/*
+static/faces/*
+!static/frames/.gitkeep
+!static/faces/.gitkeep

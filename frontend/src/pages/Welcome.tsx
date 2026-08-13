@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
@@ -132,10 +132,13 @@ export default function Welcome() {
               </Chip>
             </div>
             <h1 className="font-syne font-bold text-3xl lg:text-4xl text-white leading-tight">
-              Welcome back, <span className="bg-gradient-to-r from-blue-300 to-violet-300 bg-clip-text text-transparent">Operator</span>.
+              Find a face.{' '}
+              <span className="bg-gradient-to-r from-blue-300 via-violet-300 to-cyan-300 bg-clip-text text-transparent">
+                In video, live, or a photo.
+              </span>
             </h1>
             <p className="text-slate-400 mt-2 max-w-xl">
-              Your local FaceMatcher workspace. Run scans, monitor live feeds, and analyse emotion — all on a single self-hosted node.
+              Match people across videos and camera feeds, keep a named gallery, and read emotion from a single frame — all in one workspace.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -153,6 +156,26 @@ export default function Welcome() {
             </Link>
           </div>
         </div>
+        {totalEvents === 0 && (
+          <ol className="relative mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {[
+              { n: '01', t: 'Enroll a face', d: 'Add a named photo to the gallery.', to: '/database' },
+              { n: '02', t: 'Scan a video', d: 'Find that face with timestamps.', to: '/video' },
+              { n: '03', t: 'Go live', d: 'Match against your webcam.', to: '/live' },
+              { n: '04', t: 'Read emotion', d: 'Upload a still or use the camera.', to: '/emotion' },
+            ].map((s) => (
+              <Link
+                key={s.n}
+                to={s.to}
+                className="relative rounded-xl border border-white/8 bg-white/[0.03] hover:border-white/20 px-3.5 py-3 transition-colors"
+              >
+                <p className="text-[10px] font-mono text-blue-300/80">{s.n}</p>
+                <p className="text-sm font-syne font-semibold text-white mt-0.5">{s.t}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{s.d}</p>
+              </Link>
+            ))}
+          </ol>
+        )}
       </div>
 
       {/* Stat grid */}
@@ -419,7 +442,7 @@ export default function Welcome() {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
+function MiniStat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <p className="text-[10px] font-mono text-slate-500 tracking-widest uppercase mb-1">{label}</p>

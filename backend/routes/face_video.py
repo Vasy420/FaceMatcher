@@ -1,12 +1,20 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-import tempfile, os, uuid, cv2, face_recognition, numpy as np
+import tempfile, uuid, cv2, face_recognition
 from pathlib import Path
-from utils.face_utils import encode_face_from_bytes, distance_to_confidence
+from utils.face_utils import (
+    annotate_bgr,
+    clamp_upload,
+    distance_to_confidence,
+    encode_face_from_bytes,
+    resize_if_large,
+)
 
 router = APIRouter(prefix="/api/match", tags=["video"])
 
 FRAMES_DIR = Path(__file__).parent.parent / "static" / "frames"
 FRAMES_DIR.mkdir(parents=True, exist_ok=True)
+MAX_IMAGE = 8 * 1024 * 1024
+MAX_VIDEO = 120 * 1024 * 1024
 
 
 @router.post("/video")
@@ -16,15 +24,20 @@ async def match_video(
     threshold: float = Form(0.6),
     frame_skip: int = Form(5),
 ):
+    threshold = min(0.95, max(0.2, float(threshold)))
+    frame_skip = min(30, max(1, int(frame_skip)))
+
     ref_data = await reference_image.read()
+    clamp_upload(ref_data, MAX_IMAGE, "Reference image")
     ref_encoding = encode_face_from_bytes(ref_data)
     if ref_encoding is None:
         raise HTTPException(status_code=422, detail="No face detected in reference image.")
 
-    # Write video to temp file
+    video_bytes = await video.read()
+    clamp_upload(video_bytes, MAX_VIDEO, "Video")
     suffix = Path(video.filename or "video.mp4").suffix or ".mp4"
     tmp_path = Path(tempfile.gettempdir()) / f"{uuid.uuid4().hex}{suffix}"
-    tmp_path.write_bytes(await video.read())
+    tmp_path.write_bytes(video_bytes)
 
     try:
         cap = cv2.VideoCapture(str(tmp_path))
@@ -48,20 +61,29 @@ async def match_video(
                     continue
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                locations = face_recognition.face_locations(rgb)
+                work = resize_if_large(rgb, 960)
+                locations = face_recognition.face_locations(work)
                 if not locations:
                     continue
-                encodings = face_recognition.face_encodings(rgb, locations)
+                encodings = face_recognition.face_encodings(work, locations)
+                scale = rgb.shape[1] / work.shape[1]
 
                 for loc, enc in zip(locations, encodings):
                     dist = face_recognition.face_distance([ref_encoding], enc)[0]
                     confidence = distance_to_confidence(dist)
                     if confidence >= threshold:
-                        top, right, bottom, left = loc
+                        top, right, bottom, left = [int(v * scale) for v in loc]
                         timestamp = frame_number / fps
                         fname = f"{uuid.uuid4().hex}.jpg"
                         frame_path = FRAMES_DIR / fname
-                        cv2.imwrite(str(frame_path), frame)
+                        annotated = frame.copy()
+                        annotate_bgr(
+                            annotated,
+                            (top, right, bottom, left),
+                            f"{confidence * 100:.0f}%",
+                            (80, 200, 120) if confidence >= 0.6 else (40, 180, 240),
+                        )
+                        cv2.imwrite(str(frame_path), annotated)
                         matches.append({
                             "timestamp_seconds": round(timestamp, 2),
                             "frame_number": frame_number,

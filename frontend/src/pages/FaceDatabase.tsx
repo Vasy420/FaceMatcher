@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { ReactNode, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Search, UserCheck, Users, Database, X, Calendar } from 'lucide-react';
 import { useToast } from '../App';
@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader';
 import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import { recordActivity } from '../lib/activity';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const PAGE = {
   initial: { opacity: 0, y: 16 },
@@ -31,25 +32,26 @@ export default function FaceDatabase() {
   const [identifyResult, setIdentifyResult] = useState<IdentifyResponse | null>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Face | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Face | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const regFileRef = useRef<HTMLInputElement>(null);
   const idFileRef = useRef<HTMLInputElement>(null);
 
   const filtered = faces.filter((f) => f.name.toLowerCase().includes(query.toLowerCase()));
 
-  async function loadFaces() {
+  async function loadFaces(quiet = false) {
     setLoadingFaces(true);
     try {
       const { data } = await api.get<{ faces: Face[] }>('/api/faces/list');
       setFaces(data.faces);
     } catch {
-      toast('Failed to load face database.', 'error');
+      if (!quiet) toast('Failed to load face database.', 'error');
     } finally {
       setLoadingFaces(false);
     }
   }
 
-  useEffect(() => { loadFaces(); }, []);
+  useEffect(() => { loadFaces(true); }, []);
 
   useEffect(() => {
     if (identifyResult && identifyPreview) drawAnnotations(identifyResult.results);
@@ -125,7 +127,13 @@ export default function FaceDatabase() {
         detail: data.results.map((r) => r.name).filter((n) => n !== 'Unknown').slice(0, 3).join(', ') || 'No matches in DB',
         meta: { matches: named, total: data.face_count },
       });
-      toast(`${data.face_count} face(s) analysed.`, 'info');
+      if (data.face_count === 0) {
+        toast('No face found in that image.', 'warning');
+      } else if (faces.length === 0) {
+        toast('Faces found, but the gallery is empty — enroll someone first.', 'info');
+      } else {
+        toast(`${data.face_count} face(s) analysed.`, 'info');
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Identification failed.';
       toast(msg, 'error');
@@ -241,7 +249,7 @@ export default function FaceDatabase() {
                         #{f.id}
                       </span>
                       <span
-                        onClick={(e) => { e.stopPropagation(); handleDelete(f.id, f.name); }}
+                        onClick={(e) => { e.stopPropagation(); setPendingDelete(f); }}
                         className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-black/70 hover:bg-rose-500/80 text-white rounded-md p-1 transition-all cursor-pointer"
                       >
                         <Trash2 size={11} />
@@ -312,7 +320,7 @@ export default function FaceDatabase() {
 
             <button
               onClick={handleRegister}
-              disabled={registering}
+              disabled={registering || !registerName.trim() || !registerFile}
               className="btn-primary flex items-center justify-center gap-2 disabled:opacity-40"
             >
               {registering ? 'Registering…' : <><Plus size={14} /> Register</>}
@@ -396,17 +404,32 @@ export default function FaceDatabase() {
             face={selected}
             onClose={() => setSelected(null)}
             onDelete={() => {
-              handleDelete(selected.id, selected.name);
-              setSelected(null);
+              setPendingDelete(selected);
             }}
           />
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        danger
+        title="Remove this face?"
+        body={pendingDelete ? `"${pendingDelete.name}" will be deleted from the local gallery. Identification will no longer match them.` : ''}
+        confirmLabel="Remove"
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) {
+            handleDelete(pendingDelete.id, pendingDelete.name);
+            if (selected?.id === pendingDelete.id) setSelected(null);
+          }
+          setPendingDelete(null);
+        }}
+      />
     </motion.div>
   );
 }
 
-function DBStat({ label, value, accent }: { label: string; value: React.ReactNode; accent: string }) {
+function DBStat({ label, value, accent }: { label: string; value: ReactNode; accent: string }) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] p-4">
       <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-20" style={{ background: accent }} />
@@ -468,7 +491,7 @@ function FaceDrawer({ face, onClose, onDelete }: { face: Face; onClose: () => vo
   );
 }
 
-function DrawerMeta({ label, value }: { label: string; value: React.ReactNode }) {
+function DrawerMeta({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-2">
       <p className="text-[9px] font-mono text-slate-500 tracking-widest uppercase">{label}</p>

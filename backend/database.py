@@ -4,7 +4,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "facematcher.db"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "facematcher.db"
 UPLOADS_DIR = Path(__file__).parent / "static" / "faces"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 

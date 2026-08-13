@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { ReactNode, useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Download, ChevronRight, Clock, Film, Filter, SortDesc, Search, AlertCircle } from 'lucide-react';
 import DropZone from '../components/DropZone';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
 import PageHeader from '../components/PageHeader';
-import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import { recordActivity } from '../lib/activity';
 import { useToast } from '../App';
@@ -373,7 +372,7 @@ function ResultStat({
   accent,
 }: {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   highlight?: boolean;
   accent: string;
 }) {

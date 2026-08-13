@@ -1,10 +1,17 @@
 services:
   - type: web
-    name: facematcher-api
+    name: facematcher
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 10000
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: TF_CPP_MIN_LOG_LEVEL
+        value: "2"
+      - key: CUDA_VISIBLE_DEVICES
+        value: "-1"

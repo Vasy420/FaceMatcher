@@ -31,13 +31,13 @@ export default function DropZone({ accept, file, onFile, label, previewUrl }: Pr
       setPreviewSrc(previewUrl);
       return;
     }
-    if (file && accept === 'image') {
+    if (file) {
       const url = URL.createObjectURL(file);
       setPreviewSrc(url);
       return () => URL.revokeObjectURL(url);
     }
     setPreviewSrc(null);
-  }, [file, previewUrl, accept]);
+  }, [file, previewUrl]);
 
   async function handleFile(incoming: File) {
     if (incoming.name.toLowerCase().endsWith('.heic')) {
@@ -93,13 +93,17 @@ export default function DropZone({ accept, file, onFile, label, previewUrl }: Pr
             </div>
           </>
         ) : file && accept === 'video' ? (
-          <div className="w-full px-4 py-4 flex flex-col items-center gap-2">
-            <Film size={32} className="text-blue-400" />
-            <p className="text-sm text-slate-200 font-sans font-medium text-center">{file.name}</p>
+          <div className="w-full px-3 py-3 flex flex-col items-center gap-2">
+            {previewSrc ? (
+              <video src={previewSrc} className="w-full max-h-[180px] rounded-xl object-cover bg-black/40" muted playsInline preload="metadata" />
+            ) : (
+              <Film size={32} className="text-blue-400" />
+            )}
+            <p className="text-sm text-slate-200 font-sans font-medium text-center truncate max-w-full px-2">{file.name}</p>
             <p className="text-xs text-slate-500 font-mono">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
             <button
               onClick={(e) => { e.stopPropagation(); onFile(null); }}
-              className="mt-1 text-xs text-slate-500 hover:text-red-400 underline transition-colors"
+              className="mt-0.5 text-xs text-slate-500 hover:text-red-400 underline transition-colors"
             >
               Remove
             </button>

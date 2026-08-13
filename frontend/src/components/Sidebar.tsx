@@ -38,9 +38,17 @@ interface SidebarProps {
   onOpenPalette: () => void;
   collapsed: boolean;
   setCollapsed: (b: boolean) => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export default function Sidebar({ onOpenPalette, collapsed, setCollapsed }: SidebarProps) {
+export default function Sidebar({
+  onOpenPalette,
+  collapsed,
+  setCollapsed,
+  mobileOpen = false,
+  onMobileClose,
+}: SidebarProps) {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
@@ -59,15 +67,25 @@ export default function Sidebar({ onOpenPalette, collapsed, setCollapsed }: Side
   const width = collapsed ? 72 : 240;
 
   return (
+    <>
+    {mobileOpen && (
+      <button
+        className="md:hidden fixed inset-0 z-30 bg-black/50"
+        aria-label="Close menu"
+        onClick={onMobileClose}
+      />
+    )}
     <motion.aside
-      animate={{ width }}
+      animate={{ width: mobileOpen ? 240 : width }}
       transition={{ type: 'spring', stiffness: 280, damping: 30 }}
-      className="fixed left-0 top-0 bottom-0 z-30 flex flex-col overflow-hidden"
+      className={`fixed left-0 top-0 bottom-0 z-40 flex flex-col overflow-hidden transition-transform duration-300
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
       style={{
-        background: 'linear-gradient(180deg, rgba(13,18,38,0.92), rgba(10,15,30,0.92))',
+        background: 'linear-gradient(180deg, rgba(13,18,38,0.94), rgba(10,15,30,0.94))',
         borderRight: '1px solid rgba(255,255,255,0.06)',
         backdropFilter: 'blur(28px) saturate(150%)',
         WebkitBackdropFilter: 'blur(28px) saturate(150%)',
+        width: mobileOpen ? 240 : undefined,
       }}
     >
       <div className="scan-line" />
@@ -217,6 +235,7 @@ export default function Sidebar({ onOpenPalette, collapsed, setCollapsed }: Side
         </div>
       </div>
     </motion.aside>
+    </>
   );
 }
 

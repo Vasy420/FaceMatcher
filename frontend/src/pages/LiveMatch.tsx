@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { ReactNode, useRef, useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, CameraOff, Upload, Zap, Maximize2, Wifi, Gauge, Users, Target } from 'lucide-react';
 import { useToast } from '../App';
@@ -28,6 +28,7 @@ export default function LiveMatch() {
   const [faceCount, setFaceCount] = useState(0);
   const [bestConfidence, setBestConfidence] = useState(0);
   const [matchDetected, setMatchDetected] = useState(false);
+  const [sessionHits, setSessionHits] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -133,6 +134,7 @@ export default function LiveMatch() {
       setMatchDetected(matched);
       if (matched) {
         sessionMatchesRef.current++;
+        setSessionHits(sessionMatchesRef.current);
         if (!matchLoggedRef.current) {
           matchLoggedRef.current = true;
           recordActivity({
@@ -166,6 +168,7 @@ export default function LiveMatch() {
       setRunning(true);
       matchLoggedRef.current = false;
       sessionMatchesRef.current = 0;
+      setSessionHits(0);
       sessionStartRef.current = Date.now();
 
       connectWs();
@@ -273,7 +276,7 @@ export default function LiveMatch() {
               <SessionStat label="State" value={running ? (ready ? 'Streaming' : 'Init…') : 'Idle'} dot={running ? (ready ? 'bg-emerald-400' : 'bg-amber-400') : 'bg-slate-500'} />
               <SessionStat label="Pipeline" value="WebSocket" dot="bg-blue-400" />
               <SessionStat label="Frame rate" value={`${fps}/s`} />
-              <SessionStat label="Latency" value={`${latency}ms`} />
+              <SessionStat label="Hits" value={sessionHits} />
             </div>
           </div>
 
@@ -465,7 +468,7 @@ function TelemetryTile({
 }: {
   icon: typeof Camera;
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   accent: string;
   live: boolean;
 }) {
@@ -484,7 +487,7 @@ function TelemetryTile({
   );
 }
 
-function SessionStat({ label, value, dot }: { label: string; value: React.ReactNode; dot?: string }) {
+function SessionStat({ label, value, dot }: { label: string; value: ReactNode; dot?: string }) {
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-2">
       <p className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">{label}</p>
