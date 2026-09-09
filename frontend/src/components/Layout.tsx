@@ -1,12 +1,13 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import Sidebar, { SIDEBAR_COLLAPSED, SIDEBAR_EXPANDED, useSidebarCollapsed } from './Sidebar';
-import { checkHealth } from '../lib/api';
+import { API_ONLINE_EVENT, checkHealth } from '../lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Search } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import CommandPalette from './CommandPalette';
 import MobileNav from './MobileNav';
 import Logo from './Logo';
+import WakeServerButton from './WakeServerButton';
 
 const PAGE_NAME: Record<string, string> = {
   '/home': 'Dashboard',
@@ -18,7 +19,6 @@ const PAGE_NAME: Record<string, string> = {
 
 export default function Layout({ children }: { children: ReactNode }) {
   const [showBanner, setShowBanner] = useState(false);
-  const [retryIn, setRetryIn] = useState(3);
   const location = useLocation();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -50,27 +50,32 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let retryTimer: ReturnType<typeof setTimeout>;
-    let countdownTimer: ReturnType<typeof setInterval>;
+    let cancelled = false;
 
     async function check() {
       const ok = await checkHealth();
+      if (cancelled) return;
       if (!ok) {
         setShowBanner(true);
-        setRetryIn(3);
-        countdownTimer = setInterval(() => setRetryIn((n) => n - 1), 1000);
         retryTimer = setTimeout(() => {
-          clearInterval(countdownTimer);
           check();
-        }, 3000);
+        }, 20_000);
       } else {
         setShowBanner(false);
       }
     }
 
-    check();
-    return () => {
+    const onOnline = () => {
+      setShowBanner(false);
       clearTimeout(retryTimer);
-      clearInterval(countdownTimer);
+    };
+
+    check();
+    window.addEventListener(API_ONLINE_EVENT, onOnline);
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      window.removeEventListener(API_ONLINE_EVENT, onOnline);
     };
   }, []);
 
@@ -112,11 +117,12 @@ export default function Layout({ children }: { children: ReactNode }) {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="bg-amber-500/8 border-b border-amber-500/15 px-4 sm:px-6 py-2.5 flex items-center gap-2">
+              <div className="bg-amber-500/8 border-b border-amber-500/15 px-4 sm:px-6 py-2.5 flex flex-wrap items-center gap-2 sm:gap-3">
                 <AlertTriangle size={14} className="text-amber-400 shrink-0" />
-                <span className="text-sm text-amber-200/90">
-                  API offline — retrying in {Math.max(retryIn, 0)}s
+                <span className="text-sm text-amber-200/90 flex-1 min-w-[12rem]">
+                  Server asleep (Render Free). Wake it — first ping can take up to a minute.
                 </span>
+                <WakeServerButton compact onOnline={() => setShowBanner(false)} />
               </div>
             </motion.div>
           )}

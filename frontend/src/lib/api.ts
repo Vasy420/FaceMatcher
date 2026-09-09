@@ -16,19 +16,30 @@ export function getStaticUrl(path: string): string {
   return BASE + (path.startsWith('/') ? path : `/${path}`);
 }
 
-export async function checkHealth(): Promise<boolean> {
+export async function checkHealth(timeout = 5000): Promise<boolean> {
   try {
-    const { data } = await api.get('/health', { timeout: 5000 });
+    const { data } = await api.get('/health', { timeout });
     return data?.status === 'ok';
   } catch {
     try {
-      const { data } = await api.get('/', { timeout: 5000 });
+      const { data } = await api.get('/', { timeout });
       return data?.status === 'ok';
     } catch {
       return false;
     }
   }
 }
+
+/** Long ping to spin up a sleeping Render instance (cold start can take ~60s). */
+export async function wakeServer(): Promise<boolean> {
+  const ok = await checkHealth(90_000);
+  if (ok && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('fm:api-online'));
+  }
+  return ok;
+}
+
+export const API_ONLINE_EVENT = 'fm:api-online';
 
 /** Extract a human-readable message from axios / FastAPI errors. */
 export function apiErrorMessage(err: unknown, fallback = 'Request failed.'): string {

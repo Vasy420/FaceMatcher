@@ -16,7 +16,8 @@ import {
 import StatCard from '../components/StatCard';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-import { api, checkHealth } from '../lib/api';
+import { api, API_ONLINE_EVENT, checkHealth } from '../lib/api';
+import WakeServerButton from '../components/WakeServerButton';
 import { Face } from '../types';
 import {
   ActivityEvent,
@@ -97,9 +98,18 @@ export default function Dashboard() {
     load();
     ping();
     const id = setInterval(ping, 8000);
+    const onOnline = () => {
+      if (!cancelled) {
+        setHealthy(true);
+        load();
+        ping();
+      }
+    };
+    window.addEventListener(API_ONLINE_EVENT, onOnline);
     return () => {
       cancelled = true;
       clearInterval(id);
+      window.removeEventListener(API_ONLINE_EVENT, onOnline);
     };
   }, []);
 
@@ -121,6 +131,9 @@ export default function Dashboard() {
         subtitle="Your local workspace. Scan video, match live, manage faces, and read emotion."
         actions={
           <>
+            {healthy === false && (
+              <WakeServerButton onOnline={() => setHealthy(true)} />
+            )}
             <Link to="/video" className="btn-primary">
               Scan video <ArrowRight size={14} />
             </Link>

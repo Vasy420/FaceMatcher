@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,6 +13,8 @@ import {
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import InteractiveMark from '../components/InteractiveMark';
+import WakeServerButton from '../components/WakeServerButton';
+import { API_ONLINE_EVENT, checkHealth } from '../lib/api';
 
 const fade = {
   initial: { opacity: 0, y: 14 },
@@ -71,6 +74,20 @@ const PIPELINE = [
 
 export default function Welcome() {
   const navigate = useNavigate();
+  const [apiDown, setApiDown] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkHealth().then((ok) => {
+      if (!cancelled) setApiDown(!ok);
+    });
+    const onOnline = () => setApiDown(false);
+    window.addEventListener(API_ONLINE_EVENT, onOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(API_ONLINE_EVENT, onOnline);
+    };
+  }, []);
 
   function enter() {
     navigate('/home');
@@ -81,11 +98,14 @@ export default function Welcome() {
       {/* Top bar — landing only */}
       <header className="sticky top-0 z-20 flex items-center justify-between gap-3 h-14 sm:h-16 px-4 sm:px-10 border-b border-white/[0.06] bg-zinc-950/80 backdrop-blur-xl">
         <Logo to="/" size={32} />
-        <button type="button" onClick={enter} className="btn-primary h-9 px-3 sm:px-4 text-sm shrink-0">
-          <span className="sm:hidden">Enter</span>
-          <span className="hidden sm:inline">Enter dashboard</span>
-          <ArrowRight size={14} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {apiDown && <WakeServerButton compact onOnline={() => setApiDown(false)} />}
+          <button type="button" onClick={enter} className="btn-primary h-9 px-3 sm:px-4 text-sm shrink-0">
+            <span className="sm:hidden">Enter</span>
+            <span className="hidden sm:inline">Enter dashboard</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
       </header>
 
       <main className="flex-1">

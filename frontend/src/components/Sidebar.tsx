@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { checkHealth } from '../lib/api';
+import { API_ONLINE_EVENT, checkHealth } from '../lib/api';
+import WakeServerButton from './WakeServerButton';
 import { motion } from 'framer-motion';
 import Logo from './Logo';
 
@@ -47,7 +48,12 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     };
     poll();
     const id = setInterval(poll, 6000);
-    return () => clearInterval(id);
+    const onOnline = () => setHealthy(true);
+    window.addEventListener(API_ONLINE_EVENT, onOnline);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener(API_ONLINE_EVENT, onOnline);
+    };
   }, []);
 
   const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
@@ -161,9 +167,14 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
             )}
           />
           {!collapsed && (
-            <span className="text-xs text-zinc-400">
-              {healthy === null ? 'Connecting…' : healthy ? 'API online' : 'API offline'}
-            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-zinc-400">
+                {healthy === null ? 'Connecting…' : healthy ? 'API online' : 'API offline'}
+              </p>
+              {healthy === false && (
+                <WakeServerButton compact className="mt-2 w-full" onOnline={() => setHealthy(true)} />
+              )}
+            </div>
           )}
         </div>
       </div>
