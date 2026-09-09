@@ -1,17 +1,19 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from utils.face_utils import clamp_upload, load_image_bytes, resize_if_large
+from utils.face_utils import load_image_bytes
+from utils.validation import validate_image_bytes
 import tempfile, uuid
 from pathlib import Path
 
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
-MAX_IMAGE = 8 * 1024 * 1024
 
 
 @router.post("/detect")
 async def detect_emotion(image: UploadFile = File(...)):
     data = await image.read()
-    clamp_upload(data, MAX_IMAGE, "Image")
-    img = resize_if_large(load_image_bytes(data), 960)
+    ok, err = validate_image_bytes(data, image.filename or "image")
+    if not ok:
+        raise HTTPException(status_code=422, detail=err)
+    img = load_image_bytes(data)
 
     tmp = Path(tempfile.gettempdir()) / f"{uuid.uuid4().hex}.jpg"
     try:
@@ -22,7 +24,7 @@ async def detect_emotion(image: UploadFile = File(...)):
         img_h, img_w = img.shape[:2]
 
         try:
-            from deepface import DeepFace
+            from deepface import DeepFace  # lazy: TensorFlow is heavy; skip at boot
 
             results = DeepFace.analyze(
                 img_path=str(tmp),

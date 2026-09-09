@@ -1,60 +1,49 @@
+export function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+export function confidenceColor(c: number): string {
+  if (c >= 0.75) return '#22c55e';
+  if (c >= 0.5) return '#f59e0b';
+  return '#ef4444';
+}
+
 export function uid(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return Math.random().toString(36).slice(2, 10);
 }
 
-/** Format seconds as m:ss or h:mm:ss. */
-export function formatTime(totalSeconds: number): string {
-  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '0:00';
-  const s = Math.floor(totalSeconds);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-export function formatRelative(ts: string | number | Date): string {
-  const date = ts instanceof Date ? ts : new Date(ts);
-  if (Number.isNaN(date.getTime())) return '';
-  const diff = Date.now() - date.getTime();
-  const sec = Math.round(diff / 1000);
-  if (sec < 10) return 'just now';
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  if (day < 7) return `${day}d ago`;
-  return date.toLocaleDateString();
-}
-
-export function confidenceColor(confidence: number): string {
-  if (confidence >= 0.75) return '#34d399';
-  if (confidence >= 0.55) return '#fbbf24';
-  if (confidence >= 0.35) return '#fb923c';
-  return '#fb7185';
+export function formatRelative(ts: number): string {
+  const diff = Date.now() - ts;
+  const s = Math.floor(diff / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString();
 }
 
 export const EMOTION_EMOJI: Record<string, string> = {
-  happy: '😊',
-  sad: '😢',
   angry: '😠',
-  surprise: '😲',
-  fear: '😨',
   disgust: '🤢',
+  fear: '😨',
+  happy: '😄',
+  sad: '😢',
+  surprise: '😲',
   neutral: '😐',
 };
 
 export const EMOTION_COLOR: Record<string, string> = {
-  happy: '#34d399',
-  sad: '#60a5fa',
-  angry: '#f43f5e',
-  surprise: '#fbbf24',
-  fear: '#a78bfa',
+  angry: '#ef4444',
   disgust: '#84cc16',
+  fear: '#a855f7',
+  happy: '#22c55e',
+  sad: '#3b82f6',
+  surprise: '#f59e0b',
   neutral: '#94a3b8',
 };

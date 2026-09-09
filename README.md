@@ -1,129 +1,170 @@
 # FaceMatcher
 
-AI-powered face recognition workspace with four modules: video scanning, live webcam matching, a named face gallery, and emotion detection.
+Minimal AI face recognition workspace — video scanning, image-in-video search, live webcam matching, face database, and emotion detection.
 
-**Stack:** FastAPI · face_recognition · DeepFace · React · Vite · TypeScript · Tailwind CSS · Framer Motion · SQLite
+**Stack:** FastAPI · face_recognition · OpenCV · DeepFace · React · Vite · TypeScript · Tailwind CSS · SQLite
 
 ---
 
 ## Features
 
-| Module | Route | What it does |
-|--------|-------|----------------|
-| Video Match | `/video` | Upload a reference face + video. Every Nth frame is scanned. Hits come back as annotated thumbnails with timestamps and confidence. |
-| Live Camera | `/live` | Webcam frames stream over WebSocket. Bounding boxes overlay in real time with a match alert. |
-| Face Database | `/database` | Register named faces in SQLite, then identify people in any photo. |
-| Emotion Detect | `/emotion` | Upload or use the webcam. DeepFace returns a dominant emotion plus a 7-class breakdown. |
+| Module | Description |
+|--------|-------------|
+| **Video Match · Face** | Reference face + video → dlib encodings → matched frames with timestamps |
+| **Video Match · Image** | Multi-scale OpenCV template matching — find any image in a video |
+| **Live Camera** | Webcam → WebSocket → real-time face bbox overlay + match alerts |
+| **Face Database** | Register named faces in SQLite → identify faces in photos |
+| **Emotion** | Upload or webcam → DeepFace 7-class emotion + probability bars |
 
-**Workspace extras:** command palette (`⌘K` / `Ctrl+K`), `g` then `d/v/l/f/e` to jump modules, local activity log, mobile bottom nav.
+Image-in-video matching is ported from the original Streamlit prototype (`PythonProject/`) into this FastAPI + React app.
 
 ---
 
-## Quick Start
+## Quick Start (Windows)
 
-### Backend
+### 1. Backend (one-time setup)
 
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+Requires **Python 3.11** (the included dlib wheel is `cp311`).
+
+```powershell
+# From the project root
+.\setup-backend.ps1
+.\start-backend.ps1
 ```
 
-> **Windows:** `face_recognition` needs dlib. Install the bundled wheel, then the rest:
-> ```
-> pip install dlib-19.24.1-cp311-cp311-win_amd64.whl
-> pip install -r requirements.txt
-> ```
-> Or run inside WSL / Docker.
+API: **http://127.0.0.1:8000**
 
-API: `http://localhost:8000` · health: `http://localhost:8000/health` · docs: `http://localhost:8000/docs`
+Manual equivalent:
 
-### Frontend
+```powershell
+cd backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\pip install .\dlib-19.24.1-cp311-cp311-win_amd64.whl
+.\.venv\Scripts\pip install -r requirements.txt
+$env:TF_ENABLE_ONEDNN_OPTS="0"
+.\.venv\Scripts\uvicorn main:app --reload --port 8000
+```
 
-```bash
+### 2. Frontend
+
+```powershell
+# New terminal, from project root
+.\start-frontend.ps1
+```
+
+UI: **http://127.0.0.1:5173**
+
+Manual equivalent:
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
-
-Open `http://localhost:5173`. Vite proxies `/api`, `/health`, and `/static` to port 8000.  
-`frontend/.env.development` sets `VITE_API_URL=http://localhost:8000` so the UI talks to the API directly.
 
 ---
 
 ## Architecture
 
 ```
-browser ──REST / WebSocket──► FastAPI
-                               ├── face_recognition (dlib HOG)   # encodings + match
-                               ├── DeepFace (TF / Keras)         # emotion
-                               ├── OpenCV                        # frames
-                               └── SQLite                        # named gallery
+browser ──REST/WS──► FastAPI (:8000)
+                       ├── face_recognition (dlib)   face encoding + matching
+                       ├── OpenCV template match     image-in-video
+                       ├── DeepFace (TF/Keras)       emotion
+                       ├── OpenCV                    frames
+                       └── SQLite                    face registry
 ```
 
-- Encodings stored as `float64` BLOBs, cached in memory on startup
-- Confidence = `1 − face_recognition_distance` (0–1, higher is better)
-- Live frames capped at ~6 fps in the browser to keep the socket healthy
-- Large images are downscaled before detection so video / live stay responsive
+- Face encodings stored as `float64` BLOBs, cached in-memory on startup  
+- Confidence = `1 − face_distance` (face mode) or `TM_CCOEFF_NORMED` (template mode)  
+- Matches de-duplicated to ~1 per second  
+- Images validated (format/size); videos capped at 10 minutes / 100 MB  
+- Live WebSocket ~6 fps client-side  
 
 ---
 
-## Deploy
+## API
 
-### One service (recommended) — Render + Docker
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/` | Health + version |
+| GET | `/api/stats` | Enrolled face count |
+| POST | `/api/match/video` | `mode=face` or `mode=template` |
+| WS | `/api/match/live` | Live face matching |
+| POST | `/api/faces/register` | Enroll face |
+| GET | `/api/faces/list` | List faces |
+| DELETE | `/api/faces/{id}` | Remove face |
+| POST | `/api/faces/identify` | Identify faces in image |
+| POST | `/api/emotion/detect` | Emotion analysis |
 
-The root `Dockerfile` builds the React app and serves it from FastAPI on a single origin. No CORS, no `VITE_API_URL`.
+---
 
-1. Push this repo to GitHub
-2. Render → **New Web Service** → Docker
-3. It will pick up `render.yaml` (or set dockerfile path to `./Dockerfile`)
-4. Health check: `/health`
+## Project layout
 
-```bash
-# Local full stack
-docker compose up --build
-# App: http://localhost:8000
 ```
-
-> **Memory:** DeepFace + TensorFlow need more than Render’s free 512 MB under load. Use **Hobby** (or larger) for production. First emotion request also downloads ~200 MB of model weights.
-
-### Split — Render API + Vercel UI
-
-1. **API:** Render Web Service, `backend/Dockerfile`, root directory `backend/`
-2. **UI:** Vercel project, framework Vite, root `frontend/`
-3. Env var: `VITE_API_URL=https://your-api.onrender.com`
-
-`frontend/vercel.json` already rewrites SPA routes to `index.html`.
+├── backend/              FastAPI API + .venv
+│   ├── routes/           video · live · faces · emotion
+│   ├── utils/            face_utils · validation · template_match
+│   └── static/           frames + enrolled faces
+├── frontend/             React + Vite UI
+├── PythonProject/        Original Streamlit prototype (reference)
+├── setup-backend.ps1     One-time Windows setup
+├── start-backend.ps1     Run API
+└── start-frontend.ps1    Run UI
+```
 
 ---
 
 ## Environment
 
-| Where | Variable | Purpose |
-|-------|----------|---------|
-| `frontend/.env.development` | `VITE_API_URL` | Local API (`http://localhost:8000`) |
-| `frontend/.env.production` | `VITE_API_URL` | Split-deploy API URL, or leave empty for same-origin |
-| Backend | `PORT` | Listen port (default `10000` in Docker) |
-| Backend | `CORS_ORIGINS` | Comma-separated origins, or `*` |
-| Backend | `FRONTEND_DIST` | Built UI folder (set by the root Dockerfile) |
-| Backend | `DATA_DIR` | Where `facematcher.db` is written |
+| File | Variable | Value |
+|------|----------|-------|
+| `frontend/.env.development` | `VITE_API_URL` | `http://localhost:8000` |
+| `frontend/.env.production` | `VITE_API_URL` | Render API origin (no trailing slash) |
+| `backend/.env.example` | `CORS_ORIGINS` | `*` or your Vercel origin |
+
+Copy `frontend/.env.example` → `frontend/.env.development` for local UI.
 
 ---
 
-## Keyboard
+## Deploy
 
-| Shortcut | Action |
-|----------|--------|
-| `⌘K` / `Ctrl+K` | Command palette |
-| `g` then `d` | Dashboard |
-| `g` then `v` | Video Match |
-| `g` then `l` | Live Camera |
-| `g` then `f` | Face Database |
-| `g` then `e` | Emotion |
+Split: **backend → Render**, **frontend → Vercel**. Deploy the API first so you have a URL for `VITE_API_URL`.
 
----
+### 1. Backend → Render
 
-## Credits
+1. Push this repo to GitHub.
+2. [Render](https://dashboard.render.com) → **New** → **Blueprint** and select the repo (`render.yaml`), **or** **New Web Service** with:
+   - Runtime: **Docker**
+   - Dockerfile path: `backend/Dockerfile`
+   - Context: `backend`
+3. Plan: **Starter** (512 MB) may boot face/video/live. **Standard (2 GB)** if Emotion OOMs. Free (512 MB) will almost certainly OOM.
+4. After first deploy, copy the service URL (`https://facematcher-api.onrender.com` or the URL Render assigned).
+5. Optional: set `CORS_ORIGINS=https://your-app.vercel.app` (comma-separate preview origins if needed).
+6. Optional persistent disk (paid): mount `/data`, then set `DATA_DIR=/data`, `DB_PATH=/data/facematcher.db`, `STATIC_DIR=/data/static`. Without a disk, SQLite + uploaded faces/frames reset on every deploy and spin-down.
 
-Built by Vashishta, Vishnu, Srinesh
+Health check: `GET /health` (also `/`).
+
+Render HTTP timeout is ~100s — production video length is capped via `MAX_VIDEO_DURATION_SEC=90`. First Emotion request downloads DeepFace weights (~200 MB).
+
+### 2. Frontend → Vercel
+
+1. [Vercel](https://vercel.com/new) → import the same GitHub repo.
+2. Leave Root Directory empty (repo-root `vercel.json` builds `frontend/`). **Or** set Root Directory to `frontend`.
+3. Environment variable (Production + Preview):
+
+   ```
+   VITE_API_URL=https://YOUR-RENDER-SERVICE.onrender.com
+   ```
+
+   No trailing slash. Vite inlines this at **build** time — change it → redeploy the frontend.
+4. Deploy. `https://` frontend talks to `https://` API; live match uses `wss://` automatically.
+
+Local production build check:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+

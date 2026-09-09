@@ -1,547 +1,253 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
-  Activity,
+  ArrowRight,
   Camera,
+  Cpu,
   Database,
   Film,
-  Smile,
-  Sparkles,
-  Cpu,
-  Brain,
-  Users,
-  Zap,
-  ArrowUpRight,
-  CircleDot,
-  Eye,
-  Trash2,
-  Plus,
-  UserCheck,
+  Lock,
   ScanFace,
+  Smile,
 } from 'lucide-react';
-import StatCard from '../components/StatCard';
-import Sparkline from '../components/Sparkline';
-import Chip from '../components/Chip';
-import EmptyState from '../components/EmptyState';
-import { api, checkHealth } from '../lib/api';
-import { Face } from '../types';
-import {
-  ActivityEvent,
-  emotionTotals,
-  getActivity,
-  getDailyCounts,
-  subscribeActivity,
-} from '../lib/activity';
-import { formatRelative } from '../lib/utils';
-import { EMOTION_EMOJI, EMOTION_COLOR } from '../lib/utils';
+import Logo from '../components/Logo';
+import InteractiveMark from '../components/InteractiveMark';
 
-const PAGE = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.35 } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
+const fade = {
+  initial: { opacity: 0, y: 14 },
+  animate: { opacity: 1, y: 0 },
 };
 
-const KIND_ICON = {
-  video: Film,
-  identify: UserCheck,
-  emotion: Smile,
-  live: Camera,
-  register: Plus,
-  delete: Trash2,
-} as const;
+const CAPABILITIES = [
+  {
+    icon: Film,
+    title: 'Find a person in a video',
+    body: 'Upload a reference face and a clip. FaceMatcher scans frames, scores every detection, and returns timestamps with stills you can open.',
+  },
+  {
+    icon: ScanFace,
+    title: 'Or find any image, not just a face',
+    body: 'Image match uses multi-scale template matching — logos, objects, a crop of clothing. Useful when you do not have a clean face photo.',
+  },
+  {
+    icon: Camera,
+    title: 'Match live from a webcam',
+    body: 'A WebSocket stream encodes your camera at a few frames per second and draws boxes in place. Green means match. Red means someone else.',
+  },
+  {
+    icon: Database,
+    title: 'Keep a private face gallery',
+    body: 'Enroll people by name. Later, drop a group photo and the app labels who it recognises from your local SQLite store.',
+  },
+  {
+    icon: Smile,
+    title: 'Read emotion',
+    body: 'Seven classes — angry, disgust, fear, happy, sad, surprise, neutral — from a still or a live camera, powered by DeepFace.',
+  },
+  {
+    icon: Lock,
+    title: 'Nothing is uploaded',
+    body: 'Encodings, frames, and the database live on this computer. There is no account, no cloud API, and no telemetry.',
+  },
+];
 
-const KIND_ACCENT = {
-  video: '#3B82F6',
-  identify: '#10B981',
-  emotion: '#F59E0B',
-  live: '#8B5CF6',
-  register: '#06B6D4',
-  delete: '#F43F5E',
-} as const;
+const PIPELINE = [
+  {
+    n: '01',
+    title: 'Encode',
+    body: 'A face becomes a 128-number vector (dlib). An arbitrary image becomes a multi-scale template.',
+  },
+  {
+    n: '02',
+    title: 'Search',
+    body: 'Video is walked frame-by-frame. Live camera is sampled over a socket. Photos are compared to the gallery.',
+  },
+  {
+    n: '03',
+    title: 'Report',
+    body: 'Hits come back with confidence, a timestamp, and an annotated still. You decide what to keep.',
+  },
+];
 
 export default function Welcome() {
-  const [faces, setFaces] = useState<Face[]>([]);
-  const [healthy, setHealthy] = useState<boolean | null>(null);
-  const [latency, setLatency] = useState<number | null>(null);
-  const [activity, setActivity] = useState<ActivityEvent[]>(() => getActivity());
-  const [tick, setTick] = useState(0);
+  const navigate = useNavigate();
 
-  useEffect(() => subscribeActivity(() => setActivity(getActivity())), []);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const { data } = await api.get<{ faces: Face[] }>('/api/faces/list');
-        if (!cancelled) setFaces(data.faces ?? []);
-      } catch {
-        /* offline */
-      }
-    };
-    const ping = async () => {
-      const t = performance.now();
-      const ok = await checkHealth();
-      if (!cancelled) {
-        setHealthy(ok);
-        setLatency(ok ? Math.round(performance.now() - t) : null);
-      }
-    };
-    load();
-    ping();
-    const id = setInterval(ping, 8_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
-
-  const counts = useMemo(() => getDailyCounts(14), [activity, tick]);
-  const totalEvents = activity.length;
-  const eventsToday = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return activity.filter((a) => new Date(a.ts).toISOString().slice(0, 10) === today).length;
-  }, [activity]);
-  const emoTotals = useMemo(() => emotionTotals(), [activity]);
-
-  const matchEvents = activity.filter((a) => a.kind === 'video' || a.kind === 'identify');
-  const totalMatches = matchEvents.reduce((s, a) => s + Number(a.meta?.matches ?? 0), 0);
+  function enter() {
+    navigate('/home');
+  }
 
   return (
-    <motion.div {...PAGE} className="flex flex-col gap-6">
-      {/* Greeting / hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/8 p-6 lg:p-8">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              'radial-gradient(circle at 0% 0%, rgba(59,130,246,0.12), transparent 50%), radial-gradient(circle at 100% 100%, rgba(139,92,246,0.08), transparent 50%)',
-          }}
-        />
-        <div className="relative flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Chip variant="blue" icon={<Sparkles size={10} />}>OPERATIONS · LIVE</Chip>
-              <Chip variant={healthy ? 'emerald' : 'rose'} icon={<CircleDot size={10} />}>
-                {healthy ? 'All systems nominal' : healthy === false ? 'API offline' : 'Probing…'}
-              </Chip>
-            </div>
-            <h1 className="font-syne font-bold text-3xl lg:text-4xl text-white leading-tight">
-              Find a face.{' '}
-              <span className="bg-gradient-to-r from-blue-300 via-violet-300 to-cyan-300 bg-clip-text text-transparent">
-                In video, live, or a photo.
-              </span>
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-xl">
-              Match people across videos and camera feeds, keep a named gallery, and read emotion from a single frame — all in one workspace.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              to="/live"
-              className="inline-flex items-center gap-2 px-5 h-10 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-white font-syne font-semibold text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/45 hover:-translate-y-0.5 transition-all"
-            >
-              <Camera size={14} /> Start Live Feed
-            </Link>
-            <Link
-              to="/video"
-              className="inline-flex items-center gap-2 px-5 h-10 rounded-lg border border-white/15 bg-white/[0.02] text-slate-200 font-syne font-medium text-sm hover:bg-white/5 hover:border-white/30 transition-all"
-            >
-              <Film size={14} /> New Video Scan
-            </Link>
-          </div>
-        </div>
-        {totalEvents === 0 && (
-          <ol className="relative mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {[
-              { n: '01', t: 'Enroll a face', d: 'Add a named photo to the gallery.', to: '/database' },
-              { n: '02', t: 'Scan a video', d: 'Find that face with timestamps.', to: '/video' },
-              { n: '03', t: 'Go live', d: 'Match against your webcam.', to: '/live' },
-              { n: '04', t: 'Read emotion', d: 'Upload a still or use the camera.', to: '/emotion' },
-            ].map((s) => (
-              <Link
-                key={s.n}
-                to={s.to}
-                className="relative rounded-xl border border-white/8 bg-white/[0.03] hover:border-white/20 px-3.5 py-3 transition-colors"
-              >
-                <p className="text-[10px] font-mono text-blue-300/80">{s.n}</p>
-                <p className="text-sm font-syne font-semibold text-white mt-0.5">{s.t}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{s.d}</p>
-              </Link>
-            ))}
-          </ol>
-        )}
-      </div>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+      {/* Top bar — landing only */}
+      <header className="sticky top-0 z-20 flex items-center justify-between h-16 px-6 sm:px-10 border-b border-white/[0.06] bg-zinc-950/80 backdrop-blur-xl">
+        <Logo to="/" size={34} />
+        <button type="button" onClick={enter} className="btn-primary h-9 px-4 text-sm">
+          Enter dashboard <ArrowRight size={14} />
+        </button>
+      </header>
 
-      {/* Stat grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Users}
-          label="Enrolled Faces"
-          value={faces.length}
-          accent="#10B981"
-          hint="Stored in local SQLite"
-        />
-        <StatCard
-          icon={Activity}
-          label="Events Today"
-          value={eventsToday}
-          accent="#3B82F6"
-          delta={{ value: `${totalEvents} total`, positive: true }}
-        />
-        <StatCard
-          icon={UserCheck}
-          label="Total Matches"
-          value={totalMatches}
-          accent="#8B5CF6"
-          hint="Across video + identify"
-        />
-        <StatCard
-          icon={Zap}
-          label="API Latency"
-          value={latency !== null ? `${latency}ms` : '—'}
-          accent="#F59E0B"
-          delta={
-            latency !== null
-              ? { value: latency < 100 ? 'fast' : 'normal', positive: latency < 200 }
-              : undefined
-          }
-        />
-      </div>
-
-      {/* Main grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-5">
-        {/* LEFT */}
-        <div className="flex flex-col gap-5">
-          {/* Activity chart */}
-          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <p className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase mb-1">
-                  / Detection volume
-                </p>
-                <h3 className="font-syne font-bold text-lg text-white">Last 14 days</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <Chip variant="blue" icon={<CircleDot size={9} />}>events / day</Chip>
-              </div>
-            </div>
-            <ActivityChart data={counts} />
-            <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t border-white/5">
-              <MiniStat label="Peak day" value={Math.max(...counts.map((c) => c.count), 0)} />
-              <MiniStat label="Average" value={(counts.reduce((s, c) => s + c.count, 0) / counts.length).toFixed(1)} />
-              <MiniStat label="Trend" value={
-                <Sparkline values={counts.map((c) => c.count)} width={80} height={24} />
-              } />
-            </div>
-          </div>
-
-          {/* Quick actions */}
-          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <p className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase mb-1">
-                  / Quick actions
-                </p>
-                <h3 className="font-syne font-bold text-lg text-white">Jump into a module</h3>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <QuickCard
-                to="/video"
-                icon={Film}
-                title="Scan a Video"
-                blurb="Find a face across every frame with timestamp-accurate hits."
-                accent="from-blue-500/30 to-cyan-500/20"
-              />
-              <QuickCard
-                to="/live"
-                icon={Camera}
-                title="Open Live Feed"
-                blurb="Stream webcam to the recognition engine over WebSocket."
-                accent="from-violet-500/30 to-fuchsia-500/20"
-              />
-              <QuickCard
-                to="/database"
-                icon={Database}
-                title="Manage Database"
-                blurb="Enroll named faces, identify groups, browse the gallery."
-                accent="from-emerald-500/30 to-teal-500/20"
-              />
-              <QuickCard
-                to="/emotion"
-                icon={Smile}
-                title="Read Emotion"
-                blurb="Live 7-class emotion analysis from your camera."
-                accent="from-amber-500/30 to-orange-500/20"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT */}
-        <div className="flex flex-col gap-5">
-          {/* AI status */}
-          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <p className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase mb-1">
-                  / AI runtime
-                </p>
-                <h3 className="font-syne font-bold text-lg text-white">Model status</h3>
-              </div>
-              <Chip variant={healthy ? 'emerald' : 'rose'}>
-                {healthy ? 'ONLINE' : healthy === false ? 'OFFLINE' : '…'}
-              </Chip>
-            </div>
-            <div className="flex flex-col gap-2.5">
-              <ModelRow
-                icon={ScanFace}
-                name="face_recognition"
-                detail="dlib · ResNet · 128-D"
-                online={healthy === true}
-              />
-              <ModelRow
-                icon={Brain}
-                name="DeepFace + MTCNN"
-                detail="7-class emotion classifier"
-                online={healthy === true}
-              />
-              <ModelRow
-                icon={Cpu}
-                name="OpenCV"
-                detail="Frame extraction · BGR"
-                online={healthy === true}
-              />
-            </div>
-            {latency !== null && (
-              <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-                <span className="font-mono text-slate-500">Round-trip</span>
-                <span className="font-mono text-emerald-300">{latency} ms</span>
-              </div>
-            )}
-          </div>
-
-          {/* Emotion distribution */}
-          <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <p className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase mb-1">
-                  / Mood signal
-                </p>
-                <h3 className="font-syne font-bold text-lg text-white">Recent emotions</h3>
-              </div>
-              <Link to="/emotion" className="text-[11px] font-mono text-blue-300 hover:text-blue-200">
-                Open →
-              </Link>
-            </div>
-            {Object.keys(emoTotals).length === 0 ? (
-              <EmptyState
-                icon={Smile}
-                title="No samples yet"
-                description="Run the emotion module to populate this signal panel."
-              />
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {Object.entries(emoTotals)
-                  .sort(([, a], [, b]) => b - a)
-                  .slice(0, 5)
-                  .map(([emo, count]) => {
-                    const max = Math.max(...Object.values(emoTotals));
-                    const pct = (count / max) * 100;
-                    return (
-                      <div key={emo}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 text-xs text-slate-300 capitalize">
-                            <span>{EMOTION_EMOJI[emo] ?? '•'}</span>
-                            <span>{emo}</span>
-                          </div>
-                          <span className="text-[11px] font-mono text-slate-500">{count}</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                            className="h-full rounded-full"
-                            style={{ background: EMOTION_COLOR[emo] ?? '#60A5FA' }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Activity feed */}
-      <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <p className="text-[10px] font-mono text-slate-500 tracking-[0.2em] uppercase mb-1">
-              / Activity feed
-            </p>
-            <h3 className="font-syne font-bold text-lg text-white">Recent detections</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <Chip>{activity.length} entries</Chip>
-            <span className="text-[10px] font-mono text-slate-500">stored locally</span>
-          </div>
-        </div>
-        {activity.length === 0 ? (
-          <EmptyState
-            icon={Eye}
-            title="Nothing yet"
-            description="Run a video scan, identify a face, or start the live feed — events land here."
-            action={
-              <Link
-                to="/video"
-                className="inline-flex items-center gap-2 px-4 h-9 rounded-lg bg-gradient-to-r from-blue-500 to-violet-500 text-white font-syne text-sm font-semibold"
-              >
-                Run first scan <ArrowUpRight size={13} />
-              </Link>
-            }
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="relative overflow-hidden px-6 sm:px-10">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(ellipse 70% 55% at 70% 0%, rgba(129,140,248,0.10), transparent 55%)',
+            }}
           />
-        ) : (
-          <ul className="flex flex-col gap-1.5">
-            {activity.slice(0, 8).map((a) => {
-              const Icon = KIND_ICON[a.kind] ?? Activity;
-              const accent = KIND_ACCENT[a.kind] ?? '#60A5FA';
-              return (
-                <li
-                  key={a.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.03] transition-colors group"
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center border border-white/10 shrink-0"
-                    style={{ background: `${accent}1A` }}
-                  >
-                    <Icon size={14} style={{ color: accent }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-200 truncate">{a.title}</p>
-                    {a.detail && <p className="text-[11px] text-slate-500 truncate">{a.detail}</p>}
-                  </div>
-                  <span className="text-[11px] font-mono text-slate-500 shrink-0">
-                    {formatRelative(a.ts)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </motion.div>
-  );
-}
+          <div className="relative max-w-5xl mx-auto py-16 sm:py-24 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-12 items-center">
+            <motion.div {...fade} transition={{ duration: 0.45 }}>
+              <p className="text-[11px] font-mono tracking-[0.22em] uppercase text-zinc-500 mb-5">
+                Academic project · local vision
+              </p>
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.35rem] font-medium tracking-tight leading-[1.12] text-balance">
+                A small studio for
+                <br />
+                <span className="text-zinc-500">finding faces in the wild.</span>
+              </h1>
+              <p className="mt-6 text-base sm:text-[17px] text-zinc-400 max-w-xl leading-relaxed">
+                FaceMatcher is a self-hosted web app that answers a simple question:
+                <span className="text-zinc-200"> does this person appear here?</span> It
+                searches videos, watches a webcam, remembers named faces, and can read
+                emotion — all on your machine.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button type="button" onClick={enter} className="btn-primary h-11 px-6">
+                  Enter dashboard <ArrowRight size={15} />
+                </button>
+                <a href="#what-it-does" className="btn-outline h-11 px-5">
+                  What it does
+                </a>
+              </div>
+            </motion.div>
 
-function MiniStat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div>
-      <p className="text-[10px] font-mono text-slate-500 tracking-widest uppercase mb-1">{label}</p>
-      <div className="font-syne font-bold text-lg text-white">{value}</div>
-    </div>
-  );
-}
-
-function QuickCard({
-  to,
-  icon: Icon,
-  title,
-  blurb,
-  accent,
-}: {
-  to: string;
-  icon: typeof Film;
-  title: string;
-  blurb: string;
-  accent: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="group relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all p-4"
-    >
-      <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full bg-gradient-to-br ${accent} blur-3xl opacity-50`} />
-      <div className="relative flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center shrink-0">
-          <Icon size={17} className="text-blue-300" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-0.5">
-            <p className="font-syne font-semibold text-white text-sm">{title}</p>
-            <ArrowUpRight size={13} className="text-slate-500 group-hover:text-white group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
+            <motion.div
+              {...fade}
+              transition={{ duration: 0.5, delay: 0.08 }}
+              className="flex justify-center lg:justify-end pt-4 lg:pt-0"
+            >
+              <InteractiveMark />
+            </motion.div>
           </div>
-          <p className="text-xs text-slate-500 leading-snug">{blurb}</p>
-        </div>
-      </div>
-    </Link>
-  );
-}
+        </section>
 
-function ModelRow({
-  icon: Icon,
-  name,
-  detail,
-  online,
-}: {
-  icon: typeof Brain;
-  name: string;
-  detail: string;
-  online: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2.5">
-      <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-        <Icon size={14} className="text-blue-300" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-200 truncate">{name}</p>
-        <p className="text-[11px] font-mono text-slate-500 truncate">{detail}</p>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <div className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-        <span className={`text-[10px] font-mono ${online ? 'text-emerald-300' : 'text-rose-300'}`}>
-          {online ? 'READY' : 'DOWN'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function ActivityChart({ data }: { data: { date: string; count: number }[] }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="flex items-end gap-1.5 h-32">
-      {data.map((d, i) => {
-        const h = (d.count / max) * 100;
-        return (
-          <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5 group">
-            <div className="relative w-full h-full flex items-end">
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: `${Math.max(h, 4)}%` }}
-                transition={{ duration: 0.5, delay: i * 0.025, ease: 'easeOut' }}
-                className="w-full rounded-md bg-gradient-to-t from-blue-500/60 to-violet-500/60 group-hover:from-blue-400 group-hover:to-violet-400 transition-colors relative"
-              >
-                <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-mono text-slate-300 bg-black/60 px-1.5 py-0.5 rounded border border-white/10 whitespace-nowrap">
-                  {d.count}
-                </div>
-              </motion.div>
+        {/* What it is */}
+        <section className="px-6 sm:px-10 py-16 border-t border-white/[0.06]">
+          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-[0.9fr_1.1fr] gap-10">
+            <div>
+              <p className="text-[11px] font-mono tracking-[0.2em] uppercase text-zinc-600 mb-2">
+                What this is
+              </p>
+              <h2 className="font-display text-3xl tracking-tight text-zinc-50">
+                Built to look, not to phone home.
+              </h2>
             </div>
-            <span className="text-[9px] font-mono text-slate-600">
-              {new Date(d.date).getDate()}
-            </span>
+            <div className="text-[15px] text-zinc-400 leading-relaxed space-y-4">
+              <p>
+                This started as two attempts at the same idea. The first was a Streamlit
+                tool that hunted for an image inside a video. The second was a full
+                recognition stack — faces, live camera, a database, emotion. FaceMatcher
+                is those two projects combined into one quiet interface.
+              </p>
+              <p>
+                It is meant for demos, coursework, and local experiments: “is this
+                person in the lecture recording?”, “who is in this photo?”, “what is
+                the expression right now?”. It is not a surveillance product and it
+                does not send frames anywhere.
+              </p>
+              <p className="text-zinc-500 text-sm">
+                Stack: FastAPI, dlib / face_recognition, OpenCV, DeepFace, React, SQLite.
+              </p>
+            </div>
           </div>
-        );
-      })}
+        </section>
+
+        {/* Capabilities */}
+        <section id="what-it-does" className="px-6 sm:px-10 py-16 border-t border-white/[0.06] scroll-mt-20">
+          <div className="max-w-5xl mx-auto">
+            <p className="text-[11px] font-mono tracking-[0.2em] uppercase text-zinc-600 mb-2">
+              What it does
+            </p>
+            <h2 className="font-display text-3xl tracking-tight text-zinc-50 mb-10">
+              Six things the workspace can do
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {CAPABILITIES.map((c, i) => (
+                <motion.article
+                  key={c.title}
+                  {...fade}
+                  transition={{ duration: 0.35, delay: i * 0.04 }}
+                  className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.07] flex items-center justify-center mb-4">
+                    <c.icon size={16} className="text-zinc-300" strokeWidth={1.6} />
+                  </div>
+                  <h3 className="text-sm font-medium text-zinc-100">{c.title}</h3>
+                  <p className="mt-1.5 text-sm text-zinc-500 leading-relaxed">{c.body}</p>
+                </motion.article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Pipeline */}
+        <section className="px-6 sm:px-10 py-16 border-t border-white/[0.06]">
+          <div className="max-w-5xl mx-auto">
+            <p className="text-[11px] font-mono tracking-[0.2em] uppercase text-zinc-600 mb-2">
+              Under the hood
+            </p>
+            <h2 className="font-display text-3xl tracking-tight text-zinc-50 mb-10">
+              Encode. Search. Report.
+            </h2>
+            <ol className="grid grid-cols-1 md:grid-cols-3 gap-px bg-white/[0.06] rounded-xl overflow-hidden border border-white/[0.06]">
+              {PIPELINE.map((s) => (
+                <li key={s.n} className="bg-zinc-950 p-7">
+                  <span className="font-mono text-[11px] text-indigo-300/80 tracking-widest">{s.n}</span>
+                  <h3 className="mt-3 font-display text-2xl text-zinc-50 tracking-tight">{s.title}</h3>
+                  <p className="mt-2 text-sm text-zinc-500 leading-relaxed">{s.body}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-6 flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
+              <Cpu size={16} className="text-zinc-500 mt-0.5 shrink-0" />
+              <p className="text-sm text-zinc-500 leading-relaxed">
+                Face distance is mapped to confidence as <span className="font-mono text-zinc-400">1 − distance</span>.
+                Template matches use OpenCV’s normalised correlation. Video hits are
+                de-duplicated to about one per second so the results stay readable.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="px-6 sm:px-10 py-16 border-t border-white/[0.06]">
+          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="max-w-xl">
+              <h2 className="font-display text-3xl tracking-tight text-zinc-50">
+                Ready when you are.
+              </h2>
+              <p className="mt-3 text-[15px] text-zinc-400 leading-relaxed">
+                Open the dashboard to enroll a face, scan a video, or start the live
+                feed. You can return here any time from the sidebar.
+              </p>
+            </div>
+            <button type="button" onClick={enter} className="btn-primary h-12 px-7 self-start sm:self-auto">
+              Continue to dashboard <ArrowRight size={16} />
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer className="px-6 sm:px-10 py-6 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <p className="text-xs text-zinc-600">FaceMatcher · v2.0 · runs only on this computer</p>
+        <button
+          type="button"
+          onClick={enter}
+          className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors text-left"
+        >
+          Skip intro →
+        </button>
+      </footer>
     </div>
   );
 }

@@ -1,6 +1,18 @@
 import { ReactNode, useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Download, ChevronRight, Clock, Film, Filter, SortDesc, Search, AlertCircle } from 'lucide-react';
+import {
+  Play,
+  Download,
+  ChevronRight,
+  Clock,
+  Film,
+  Filter,
+  SortDesc,
+  Search,
+  AlertCircle,
+  ScanFace,
+  Image as ImageIcon,
+} from 'lucide-react';
 import DropZone from '../components/DropZone';
 import ConfidenceRing from '../components/ConfidenceRing';
 import Skeleton from '../components/Skeleton';
@@ -8,27 +20,34 @@ import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import { recordActivity } from '../lib/activity';
 import { useToast } from '../App';
-import { api, getStaticUrl } from '../lib/api';
-import { VideoMatchResponse, VideoMatchResult } from '../types';
+import { api, apiErrorMessage, getStaticUrl } from '../lib/api';
+import { MatchMode, VideoMatchResponse, VideoMatchResult } from '../types';
 import { formatTime } from '../lib/utils';
+import clsx from 'clsx';
 
 const PAGE = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+  exit: { opacity: 0, y: -6, transition: { duration: 0.15 } },
 };
 
-const SCAN_MSGS = [
-  'Extracting reference face encoding…',
+const SCAN_MSGS_FACE = [
+  'Encoding reference face…',
   'Scanning video frames…',
-  'Running face detection…',
   'Computing match distances…',
   'Aggregating results…',
-  'Almost done…',
+];
+
+const SCAN_MSGS_TEMPLATE = [
+  'Loading reference image…',
+  'Multi-scale template matching…',
+  'Scoring frame similarities…',
+  'Collecting detections…',
 ];
 
 export default function VideoMatch() {
   const { toast } = useToast();
+  const [mode, setMode] = useState<MatchMode>('face');
   const [refImg, setRefImg] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [threshold, setThreshold] = useState(0.6);
@@ -43,6 +62,8 @@ export default function VideoMatch() {
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const msgRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const msgs = mode === 'face' ? SCAN_MSGS_FACE : SCAN_MSGS_TEMPLATE;
+
   const filteredMatches = (result?.matches ?? [])
     .filter((m) => m.confidence >= minConf)
     .sort((a, b) =>
@@ -53,11 +74,11 @@ export default function VideoMatch() {
     setProgress(0);
     setMsgIdx(0);
     progressRef.current = setInterval(() => {
-      setProgress((p) => (p < 90 ? p + Math.random() * 2.5 : p));
+      setProgress((p) => (p < 90 ? p + Math.random() * 2.2 : p));
     }, 300);
     msgRef.current = setInterval(() => {
-      setMsgIdx((i) => (i + 1) % SCAN_MSGS.length);
-    }, 2200);
+      setMsgIdx((i) => (i + 1) % msgs.length);
+    }, 2400);
   }
 
   function stopProgress() {
@@ -66,13 +87,24 @@ export default function VideoMatch() {
     setProgress(100);
   }
 
-  useEffect(() => () => {
-    if (progressRef.current) clearInterval(progressRef.current);
-    if (msgRef.current) clearInterval(msgRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (progressRef.current) clearInterval(progressRef.current);
+      if (msgRef.current) clearInterval(msgRef.current);
+    },
+    [],
+  );
+
+  // Reset result when mode changes
+  useEffect(() => {
+    setResult(null);
+  }, [mode]);
 
   async function handleSubmit() {
-    if (!refImg || !video) { toast('Upload both reference image and video.', 'warning'); return; }
+    if (!refImg || !video) {
+      toast('Upload both reference image and video.', 'warning');
+      return;
+    }
     setLoading(true);
     setResult(null);
     startProgress();
@@ -82,28 +114,29 @@ export default function VideoMatch() {
       fd.append('video', video);
       fd.append('threshold', String(threshold));
       fd.append('frame_skip', String(frameSkip));
+      fd.append('mode', mode);
       const { data } = await api.post<VideoMatchResponse>('/api/match/video', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 300_000,
       });
       stopProgress();
       setResult(data);
+      const label = mode === 'face' ? 'Face' : 'Image';
       recordActivity({
         kind: 'video',
-        title: `Video scan: ${data.matches.length} match${data.matches.length === 1 ? '' : 'es'}`,
-        detail: `${video.name} · ${data.total_frames_scanned} frames scanned · ${data.video_duration_seconds.toFixed(1)}s`,
+        title: `${label} scan: ${data.matches.length} match${data.matches.length === 1 ? '' : 'es'}`,
+        detail: `${video.name} · ${data.total_frames_scanned} frames · ${data.video_duration_seconds.toFixed(1)}s`,
         meta: { matches: data.matches.length, frames: data.total_frames_scanned },
       });
       if (data.matches.length === 0) {
-        toast('No face matches found in video.', 'info');
+        toast('No matches found in video.', 'info');
       } else {
-        toast(`Found ${data.matches.length} match${data.matches.length > 1 ? 'es' : ''}!`, 'success');
+        toast(`Found ${data.matches.length} match${data.matches.length > 1 ? 'es' : ''}.`, 'success');
       }
     } catch (err: unknown) {
       stopProgress();
       setProgress(0);
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Processing failed.';
-      toast(msg, 'error');
+      toast(apiErrorMessage(err, 'Processing failed.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -122,74 +155,120 @@ export default function VideoMatch() {
     <motion.div {...PAGE} className="flex flex-col gap-6">
       <PageHeader
         icon={Film}
-        eyebrow="MODULE · 01"
+        eyebrow="Scan"
         title="Video Match"
-        accent="#3B82F6, #06B6D4"
-        subtitle="Scan a video for a reference face and extract matched frames with timestamps."
+        accent="#818cf8"
+        subtitle="Find a face with recognition, or any image with multi-scale template matching."
       />
 
-      {/* Upload + config */}
+      {/* Mode toggle */}
+      <div className="inline-flex self-start p-0.5 rounded-lg border border-white/[0.08] bg-white/[0.02]">
+        {(
+          [
+            { id: 'face' as const, label: 'Face recognition', icon: ScanFace },
+            { id: 'template' as const, label: 'Image match', icon: ImageIcon },
+          ] as const
+        ).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setMode(id)}
+            className={clsx(
+              'flex items-center gap-1.5 px-3.5 h-8 rounded-md text-xs font-medium transition-all',
+              mode === id
+                ? 'bg-white text-zinc-900'
+                : 'text-zinc-500 hover:text-zinc-300',
+            )}
+          >
+            <Icon size={13} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-zinc-600 -mt-3">
+        {mode === 'face'
+          ? 'Uses dlib face encodings — best for identifying a person across frames.'
+          : 'Uses multi-scale OpenCV template matching — finds any reference image (logos, objects, faces).'}
+      </p>
+
+      {/* Uploads */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DropZone accept="image" file={refImg} onFile={setRefImg} label="Reference Face" />
-        <DropZone accept="video" file={video} onFile={setVideo} label="Target Video" />
+        <DropZone
+          accept="image"
+          file={refImg}
+          onFile={setRefImg}
+          label={mode === 'face' ? 'Reference face' : 'Reference image'}
+          hint="JPG, PNG · max 5 MB"
+        />
+        <DropZone
+          accept="video"
+          file={video}
+          onFile={setVideo}
+          label="Target video"
+          hint="MP4, AVI, MOV · max 10 min / 100 MB"
+        />
       </div>
 
       {/* Config */}
-      <div className="glass p-5 flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 flex flex-col sm:flex-row gap-6">
         <div className="flex-1">
-          <label className="text-xs font-mono text-slate-400 uppercase tracking-widest">
-            Confidence Threshold
+          <label className="text-xs text-zinc-500">
+            {mode === 'face' ? 'Confidence threshold' : 'Similarity threshold'}
           </label>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex items-center gap-3 mt-2.5">
             <input
-              type="range" min={0.3} max={0.95} step={0.05}
+              type="range"
+              min={0.3}
+              max={0.95}
+              step={0.05}
               value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
-              className="flex-1 accent-blue-500"
+              className="flex-1"
             />
-            <span className="font-mono text-blue-400 text-sm w-10 text-right">{(threshold * 100).toFixed(0)}%</span>
+            <span className="font-mono text-zinc-300 text-sm w-10 text-right">
+              {(threshold * 100).toFixed(0)}%
+            </span>
           </div>
-          <p className="text-xs text-slate-600 mt-1 font-mono">higher = stricter matching</p>
         </div>
         <div className="flex-1">
-          <label className="text-xs font-mono text-slate-400 uppercase tracking-widest">
-            Frame Skip
-          </label>
-          <div className="flex gap-2 mt-2 flex-wrap">
+          <label className="text-xs text-zinc-500">Frame skip</label>
+          <div className="flex gap-1.5 mt-2.5 flex-wrap">
             {[2, 5, 10, 15].map((n) => (
               <button
                 key={n}
                 onClick={() => setFrameSkip(n)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all duration-150 ${
+                className={clsx(
+                  'px-3 py-1.5 rounded-md text-xs font-mono border transition-all',
                   frameSkip === n
-                    ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                    : 'border-blue-500/10 text-slate-500 hover:text-slate-300 hover:border-blue-500/25'
-                }`}
+                    ? 'bg-white text-zinc-900 border-white'
+                    : 'border-white/[0.08] text-zinc-500 hover:text-zinc-300 hover:border-white/15',
+                )}
               >
                 every {n}
               </button>
             ))}
           </div>
-          <p className="text-xs text-slate-600 mt-1 font-mono">process 1 frame every N</p>
         </div>
       </div>
 
-      {/* Submit */}
       <button
         onClick={handleSubmit}
         disabled={loading || !refImg || !video}
-        className="btn-primary flex items-center gap-2 self-start disabled:opacity-40 disabled:cursor-not-allowed"
+        className="btn-primary self-start disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Play size={15} />
-        {loading ? 'Processing…' : 'Scan Video'}
+        <Play size={14} />
+        {loading ? 'Processing…' : 'Scan video'}
       </button>
 
-      {/* Progress */}
       {loading && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass p-5 flex flex-col gap-3">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 flex flex-col gap-3"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono text-slate-400">{SCAN_MSGS[msgIdx]}</span>
-            <span className="text-xs font-mono text-blue-400">{Math.floor(progress)}%</span>
+            <span className="text-xs text-zinc-500">{msgs[msgIdx]}</span>
+            <span className="text-xs font-mono text-zinc-400">{Math.floor(progress)}%</span>
           </div>
           <div className="progress-bar">
             <motion.div
@@ -198,112 +277,94 @@ export default function VideoMatch() {
               transition={{ ease: 'easeOut', duration: 0.3 }}
             />
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-            <span className="text-xs text-slate-600 font-mono">Running face_recognition engine…</span>
-          </div>
         </motion.div>
       )}
 
-      {/* Skeleton */}
       {loading && !result && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <Skeleton className="h-40" count={4} />
+          <Skeleton className="h-36" count={4} />
         </div>
       )}
 
-      {/* Results */}
       {result && !loading && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
-          {/* Stats bar */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <ResultStat label="Matches" value={result.matches.length} highlight={result.matches.length > 0} accent="#10B981" />
-            <ResultStat label="Frames Scanned" value={result.total_frames_scanned} accent="#3B82F6" />
-            <ResultStat label="Duration" value={formatTime(result.video_duration_seconds)} accent="#8B5CF6" />
-            <ResultStat label="Source FPS" value={result.fps.toFixed(1)} accent="#F59E0B" />
+            <ResultStat label="Matches" value={result.matches.length} highlight={result.matches.length > 0} />
+            <ResultStat label="Frames" value={result.total_frames_scanned} />
+            <ResultStat label="Duration" value={formatTime(result.video_duration_seconds)} />
+            <ResultStat label="FPS" value={result.fps.toFixed(1)} />
           </div>
 
           {result.matches.length > 0 ? (
             <>
-              {/* Filter bar */}
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex flex-wrap items-center gap-3">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3.5 flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <Filter size={13} className="text-slate-500" />
-                  <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Min confidence</span>
+                  <Filter size={12} className="text-zinc-600" />
+                  <span className="text-[11px] text-zinc-500">Min conf</span>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex gap-1">
                   {[0, 0.5, 0.7, 0.85].map((v) => (
                     <button
                       key={v}
                       onClick={() => setMinConf(v)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all ${
+                      className={clsx(
+                        'px-2 py-1 rounded-md text-[11px] font-mono border transition-all',
                         minConf === v
-                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-200'
-                          : 'border-white/10 text-slate-400 hover:border-white/25'
-                      }`}
+                          ? 'bg-white/[0.08] border-white/15 text-zinc-200'
+                          : 'border-white/[0.06] text-zinc-500 hover:border-white/12',
+                      )}
                     >
                       {v === 0 ? 'all' : `${(v * 100).toFixed(0)}%+`}
                     </button>
                   ))}
                 </div>
-                <div className="w-px h-5 bg-white/10" />
+                <div className="w-px h-4 bg-white/10" />
                 <div className="flex items-center gap-2">
-                  <SortDesc size={13} className="text-slate-500" />
-                  <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Sort</span>
+                  <SortDesc size={12} className="text-zinc-600" />
+                  <div className="flex gap-1">
+                    {(['time', 'conf'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setSortBy(s)}
+                        className={clsx(
+                          'px-2 py-1 rounded-md text-[11px] font-mono border transition-all',
+                          sortBy === s
+                            ? 'bg-white/[0.08] border-white/15 text-zinc-200'
+                            : 'border-white/[0.06] text-zinc-500 hover:border-white/12',
+                        )}
+                      >
+                        {s === 'time' ? 'time' : 'conf'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex gap-1.5">
-                  {(['time', 'conf'] as const).map((s) => (
+                <div className="ml-auto flex items-center gap-1">
+                  {(['grid', 'timeline'] as const).map((v) => (
                     <button
-                      key={s}
-                      onClick={() => setSortBy(s)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all ${
-                        sortBy === s
-                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-200'
-                          : 'border-white/10 text-slate-400 hover:border-white/25'
-                      }`}
+                      key={v}
+                      onClick={() => setView(v)}
+                      className={clsx(
+                        'px-2 py-1 rounded-md text-[11px] font-mono border capitalize',
+                        view === v
+                          ? 'bg-white/[0.08] border-white/15 text-zinc-200'
+                          : 'border-white/[0.06] text-zinc-500',
+                      )}
                     >
-                      {s === 'time' ? 'by time' : 'by confidence'}
+                      {v}
                     </button>
                   ))}
-                </div>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <button
-                    onClick={() => setView('grid')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono border ${
-                      view === 'grid'
-                        ? 'bg-white/10 border-white/20 text-white'
-                        : 'border-white/10 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Grid
-                  </button>
-                  <button
-                    onClick={() => setView('timeline')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono border ${
-                      view === 'timeline'
-                        ? 'bg-white/10 border-white/20 text-white'
-                        : 'border-white/10 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Timeline
-                  </button>
-                  <button onClick={exportJSON} className="btn-ghost flex items-center gap-1.5 text-[11px] font-mono">
-                    <Download size={12} /> JSON
+                  <button onClick={exportJSON} className="btn-ghost text-[11px] font-mono h-7 px-2">
+                    <Download size={11} /> JSON
                   </button>
                 </div>
               </div>
 
-              {/* Timeline view */}
               {view === 'timeline' && (
-                <TimelineView
-                  matches={filteredMatches}
-                  duration={result.video_duration_seconds}
-                />
+                <TimelineView matches={filteredMatches} duration={result.video_duration_seconds} />
               )}
 
-              {/* Grid */}
-              {view === 'grid' && (
-                filteredMatches.length === 0 ? (
+              {view === 'grid' &&
+                (filteredMatches.length === 0 ? (
                   <EmptyState
                     icon={Search}
                     title="No matches at this threshold"
@@ -315,14 +376,17 @@ export default function VideoMatch() {
                       <MatchCard key={i} match={m} index={i} />
                     ))}
                   </div>
-                )
-              )}
+                ))}
             </>
           ) : (
             <EmptyState
               icon={AlertCircle}
-              title="No face matches found"
-              description="Try lowering the threshold or upload a sharper reference image."
+              title="No matches found"
+              description={
+                mode === 'face'
+                  ? 'Try lowering the threshold or use a clearer face photo.'
+                  : 'Try a more distinctive reference crop, or lower the similarity threshold.'
+              }
             />
           )}
         </motion.div>
@@ -337,27 +401,27 @@ function MatchCard({ match, index }: { match: VideoMatchResult; index: number })
       href={getStaticUrl(match.frame_url)}
       target="_blank"
       rel="noreferrer"
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: index * 0.03 }}
-      className="group flex flex-col gap-2 p-2.5 rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04] transition-all"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.025 }}
+      className="group flex flex-col gap-2 p-2 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:border-white/15 transition-all"
     >
       <div className="relative">
         <img
           src={getStaticUrl(match.frame_url)}
           alt={`Match at ${formatTime(match.timestamp_seconds)}`}
-          className="w-full aspect-video object-cover rounded-lg bg-navy-800 ring-1 ring-white/5"
+          className="w-full aspect-video object-cover rounded-lg bg-zinc-900"
         />
-        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-white flex items-center gap-1">
+        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-[10px] font-mono text-white flex items-center gap-1">
           <Clock size={9} /> {formatTime(match.timestamp_seconds)}
         </div>
         <div className="absolute bottom-1.5 right-1.5">
-          <ConfidenceRing confidence={match.confidence} size={36} />
+          <ConfidenceRing confidence={match.confidence} size={34} />
         </div>
       </div>
-      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-        <span>frame · {match.frame_number}</span>
-        <span className="opacity-0 group-hover:opacity-100 text-blue-300 flex items-center gap-0.5 transition-opacity">
+      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-600 px-0.5">
+        <span>#{match.frame_number}</span>
+        <span className="opacity-0 group-hover:opacity-100 text-zinc-400 flex items-center gap-0.5 transition-opacity">
           open <ChevronRight size={10} />
         </span>
       </div>
@@ -369,18 +433,19 @@ function ResultStat({
   label,
   value,
   highlight,
-  accent,
 }: {
   label: string;
   value: ReactNode;
   highlight?: boolean;
-  accent: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] p-4">
-      <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-25" style={{ background: accent }} />
-      <p className="relative text-[10px] font-mono text-slate-500 tracking-widest uppercase">{label}</p>
-      <p className={`relative font-syne font-bold text-2xl mt-1.5 leading-none ${highlight ? 'text-emerald-300' : 'text-white'}`}>
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <p className="text-[11px] text-zinc-500 mb-1">{label}</p>
+      <p
+        className={`text-xl font-semibold tracking-tight leading-none ${
+          highlight ? 'text-emerald-400' : 'text-zinc-50'
+        }`}
+      >
         {value}
       </p>
     </div>
@@ -389,25 +454,27 @@ function ResultStat({
 
 function TimelineView({ matches, duration }: { matches: VideoMatchResult[]; duration: number }) {
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
       <div className="flex items-center justify-between mb-4">
-        <span className="text-[10px] font-mono text-slate-500 tracking-widest uppercase">Match timeline</span>
-        <span className="text-[10px] font-mono text-slate-500">
-          {matches.length} marker{matches.length === 1 ? '' : 's'} over {formatTime(duration)}
+        <span className="text-[11px] text-zinc-500">Timeline</span>
+        <span className="text-[11px] font-mono text-zinc-600">
+          {matches.length} over {formatTime(duration)}
         </span>
       </div>
-      <div className="relative h-20">
-        <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-blue-500/0 via-blue-500/40 to-blue-500/0" />
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between text-[9px] font-mono text-slate-600">
-          {[0, 0.25, 0.5, 0.75, 1].map((p) => (
-            <div key={p} className="flex flex-col items-center">
-              <div className="w-px h-2 bg-white/10 mb-1" />
-              <span>{formatTime(duration * p)}</span>
-            </div>
-          ))}
-        </div>
+      <div className="relative h-16">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-white/[0.08]" />
+        {[0, 0.25, 0.5, 0.75, 1].map((p) => (
+          <div
+            key={p}
+            className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center"
+            style={{ left: `${p * 100}%` }}
+          >
+            <div className="w-px h-2 bg-white/10 mb-1" />
+            <span className="text-[9px] font-mono text-zinc-600">{formatTime(duration * p)}</span>
+          </div>
+        ))}
         {matches.map((m, i) => {
-          const left = (m.timestamp_seconds / duration) * 100;
+          const left = duration > 0 ? (m.timestamp_seconds / duration) * 100 : 0;
           return (
             <a
               key={i}
@@ -419,36 +486,16 @@ function TimelineView({ matches, duration }: { matches: VideoMatchResult[]; dura
               title={`${formatTime(m.timestamp_seconds)} · ${(m.confidence * 100).toFixed(0)}%`}
             >
               <div
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-black/40 hover:scale-150 transition-transform"
-                style={{ background: m.confidence > 0.7 ? '#34d399' : m.confidence > 0.5 ? '#fbbf24' : '#fb7185' }}
+                className="w-2 h-2 rounded-full ring-2 ring-zinc-950 hover:scale-150 transition-transform"
+                style={{
+                  background:
+                    m.confidence > 0.7 ? '#34d399' : m.confidence > 0.5 ? '#fbbf24' : '#f87171',
+                }}
               />
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-black/80 border border-white/10 text-[10px] font-mono text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                {formatTime(m.timestamp_seconds)} · {(m.confidence * 100).toFixed(0)}%
-              </div>
             </a>
           );
         })}
       </div>
-      {matches.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {matches.slice(0, 12).map((m, i) => (
-            <a
-              key={i}
-              href={getStaticUrl(m.frame_url)}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/10 hover:border-white/25 text-[10px] font-mono text-slate-300"
-            >
-              <Clock size={9} />
-              {formatTime(m.timestamp_seconds)}
-              <span className="text-slate-500">·</span>
-              <span style={{ color: m.confidence > 0.7 ? '#34d399' : m.confidence > 0.5 ? '#fbbf24' : '#fb7185' }}>
-                {(m.confidence * 100).toFixed(0)}%
-              </span>
-            </a>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

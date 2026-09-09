@@ -1,5 +1,3 @@
-import { uid } from './utils';
-
 export type ActivityKind = 'video' | 'identify' | 'emotion' | 'live' | 'register' | 'delete';
 
 export interface ActivityEvent {
@@ -7,83 +5,78 @@ export interface ActivityEvent {
   kind: ActivityKind;
   title: string;
   detail?: string;
+  ts: number;
   meta?: Record<string, string | number>;
-  ts: string;
 }
 
 const KEY = 'fm.activity.v1';
-const MAX = 80;
-
-type Listener = () => void;
-const listeners = new Set<Listener>();
+const MAX = 50;
 
 function read(): ActivityEvent[] {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ActivityEvent[];
-    return Array.isArray(parsed) ? parsed : [];
+    return JSON.parse(localStorage.getItem(KEY) || '[]') as ActivityEvent[];
   } catch {
     return [];
   }
 }
 
-function write(events: ActivityEvent[]) {
-  localStorage.setItem(KEY, JSON.stringify(events.slice(0, MAX)));
-  listeners.forEach((fn) => fn());
+function write(list: ActivityEvent[]) {
+  localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
+  window.dispatchEvent(new CustomEvent('fm:activity'));
+}
+
+export function recordActivity(ev: Omit<ActivityEvent, 'id' | 'ts'>) {
+  const list = read();
+  list.unshift({ ...ev, id: crypto.randomUUID(), ts: Date.now() });
+  write(list);
 }
 
 export function getActivity(): ActivityEvent[] {
   return read();
 }
 
-export function recordActivity(
-  event: Omit<ActivityEvent, 'id' | 'ts'> & { ts?: string },
-): ActivityEvent {
-  const item: ActivityEvent = {
-    id: uid(),
-    ts: event.ts ?? new Date().toISOString(),
-    kind: event.kind,
-    title: event.title,
-    detail: event.detail,
-    meta: event.meta,
-  };
-  write([item, ...read()]);
-  return item;
-}
-
 export function clearActivity() {
   write([]);
 }
 
-export function subscribeActivity(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+export function subscribeActivity(cb: () => void): () => void {
+  const handler = () => cb();
+  window.addEventListener('fm:activity', handler);
+  window.addEventListener('storage', handler);
+  return () => {
+    window.removeEventListener('fm:activity', handler);
+    window.removeEventListener('storage', handler);
+  };
 }
 
-export function getDailyCounts(days = 14): { date: string; count: number }[] {
-  const events = read();
-  const out: { date: string; count: number }[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export interface DailyCount {
+  date: string;
+  count: number;
+}
 
+export function getDailyCounts(days = 14): DailyCount[] {
+  const list = read();
+  const buckets = new Map<string, number>();
+  const today = new Date();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    const count = events.filter((e) => e.ts.slice(0, 10) === key).length;
-    out.push({ date: key, count });
+    d.setDate(d.getDate() - i);
+    buckets.set(d.toISOString().slice(0, 10), 0);
   }
-  return out;
+  list.forEach((e) => {
+    const k = new Date(e.ts).toISOString().slice(0, 10);
+    if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + 1);
+  });
+  return Array.from(buckets.entries()).map(([date, count]) => ({ date, count }));
 }
 
 export function emotionTotals(): Record<string, number> {
   const totals: Record<string, number> = {};
-  for (const ev of read()) {
-    if (ev.kind !== 'emotion') continue;
-    const key = String(ev.meta?.dominant ?? '').toLowerCase();
-    if (!key || key === 'none') continue;
-    totals[key] = (totals[key] ?? 0) + 1;
-  }
+  getActivity()
+    .filter((e) => e.kind === 'emotion' && e.meta?.dominant)
+    .forEach((e) => {
+      const d = String(e.meta!.dominant);
+      totals[d] = (totals[d] ?? 0) + 1;
+    });
   return totals;
 }

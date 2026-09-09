@@ -6,7 +6,9 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
+backend/.venv/
 build/
 develop-eggs/
 dist/
@@ -49,10 +51,21 @@ Thumbs.db
 
 # Uploads / Data
 backend/uploads/
+backend/static/frames/*
+backend/static/faces/*
+!backend/static/frames/.gitkeep
+!backend/static/faces/.gitkeep
 backend/faces.db
+backend/facematcher.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Prototype artifacts
+PythonProject/temp_detected_images/
+PythonProject/detected_images/
+PythonProject/__pycache__/
+PythonProject/.venv/
 
 # Logs
 logs/

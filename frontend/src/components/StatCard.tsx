@@ -11,40 +11,31 @@ interface Props {
   hint?: string;
 }
 
-export default function StatCard({ icon: Icon, label, value, delta, accent = '#3B82F6', hint }: Props) {
+export default function StatCard({ icon: Icon, label, value, delta, hint }: Props) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
-      className="relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/15 transition-all p-5 group"
+      transition={{ duration: 0.3 }}
+      className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 hover:border-white/[0.1] transition-colors"
     >
-      <div
-        className="absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl opacity-30 group-hover:opacity-50 transition-opacity"
-        style={{ background: accent }}
-      />
-      <div className="relative flex items-start justify-between mb-4">
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center border border-white/10"
-          style={{ background: `${accent}1A` }}
-        >
-          <Icon size={16} style={{ color: accent }} />
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
+          <Icon size={15} className="text-zinc-400" strokeWidth={1.75} />
         </div>
         {delta && (
           <span
             className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-              delta.positive ? 'text-emerald-300 bg-emerald-500/10' : 'text-rose-300 bg-rose-500/10'
+              delta.positive ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'
             }`}
           >
-            {delta.positive ? '↑' : '↓'} {delta.value}
+            {delta.value}
           </span>
         )}
       </div>
-      <p className="relative text-[10px] font-mono text-slate-500 tracking-widest uppercase mb-1.5">
-        {label}
-      </p>
-      <p className="relative font-syne font-bold text-2xl text-white leading-none">{value}</p>
-      {hint && <p className="relative text-xs text-slate-500 mt-2">{hint}</p>}
+      <p className="text-[11px] text-zinc-500 mb-1">{label}</p>
+      <p className="text-2xl font-semibold text-zinc-50 tracking-tight leading-none">{value}</p>
+      {hint && <p className="text-xs text-zinc-600 mt-2">{hint}</p>}
     </motion.div>
   );
 }

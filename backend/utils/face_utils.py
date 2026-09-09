@@ -14,8 +14,21 @@ def load_image_bytes(data: bytes) -> np.ndarray:
 
 def encode_face_from_bytes(data: bytes) -> np.ndarray | None:
     """Return 128-dim encoding for the first face found in image bytes, or None."""
-    img = load_image_bytes(data)
-    encs = face_recognition.face_encodings(img)
+    img = resize_if_large(load_image_bytes(data), max_dim=800)
+    locations = face_recognition.face_locations(img, model="hog")
+    if not locations:
+        # Retry slightly upscaled for small faces
+        h, w = img.shape[:2]
+        if max(h, w) < 400:
+            scale = 400 / max(h, w)
+            up = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+            locations = face_recognition.face_locations(up, model="hog")
+            if not locations:
+                return None
+            encs = face_recognition.face_encodings(up, locations)
+            return encs[0] if encs else None
+        return None
+    encs = face_recognition.face_encodings(img, locations)
     return encs[0] if encs else None
 
 
@@ -31,6 +44,9 @@ def is_match(distance: float, threshold: float = 0.6) -> bool:
 
 def decode_base64_image(b64: str) -> np.ndarray:
     """Decode base64 JPEG/PNG string to RGB numpy array."""
+    # Support data-URL prefix if client sends it
+    if "," in b64 and b64.strip().startswith("data:"):
+        b64 = b64.split(",", 1)[1]
     raw = base64.b64decode(b64)
     return load_image_bytes(raw)
 

@@ -1,17 +1,25 @@
 services:
   - type: web
-    name: facematcher
+    name: facematcher-api
     runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # Face + video + live: ~1 GB RAM. Emotion (TensorFlow) needs ~2 GB.
+    # Free (512 MB) will OOM. starter may boot without emotion; standard recommended.
+    plan: starter
     healthCheckPath: /health
     envVars:
-      - key: PORT
-        value: 10000
-      - key: CORS_ORIGINS
-        value: "*"
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: TF_CPP_MIN_LOG_LEVEL
         value: "2"
-      - key: CUDA_VISIBLE_DEVICES
-        value: "-1"
+      - key: TF_ENABLE_ONEDNN_OPTS
+        value: "0"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: MAX_VIDEO_DURATION_SEC
+        value: "90"
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml

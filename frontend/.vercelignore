@@ -1,0 +1,5 @@
+ui-shots
+scripts
+dist
+node_modules
+*.local

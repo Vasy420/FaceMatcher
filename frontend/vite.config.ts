@@ -5,10 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    host: true,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, ws: true },
-      '/health': { target: 'http://127.0.0.1:8000' },
-      '/static': { target: 'http://127.0.0.1:8000' },
+      '/api': { target: 'http://localhost:8000', changeOrigin: true, ws: true },
+      '/static': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 });

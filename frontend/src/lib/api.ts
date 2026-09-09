@@ -1,94 +1,91 @@
 import axios from 'axios';
 
-/**
- * API origin.
- * - Empty / unset → same origin (Docker / reverse-proxy / Vite proxy).
- * - Set VITE_API_URL for split deploys (Vercel frontend + Render API).
- */
-export function getApiBase(): string {
-  const raw = (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? '';
-  return raw.replace(/\/+$/, '');
-}
+/** Empty VITE_API_URL = same origin (Docker). Split deploy: set the Render URL. */
+const BASE = ((import.meta.env.VITE_API_URL as string) || '').trim().replace(/\/+$/, '');
 
-export const api = axios.create({
-  baseURL: getApiBase(),
-  timeout: 30_000,
-});
-
-export function getStaticUrl(path: string): string {
-  if (!path) return '';
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = getApiBase();
-  const p = path.startsWith('/') ? path : `/${path}`;
-  return base ? `${base}${p}` : p;
-}
+export const api = axios.create({ baseURL: BASE, timeout: 300_000 });
 
 export function getWsUrl(path: string): string {
-  const base = getApiBase() || window.location.origin;
-  const url = new URL(path, base.endsWith('/') ? base : `${base}/`);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString();
+  const origin = BASE || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
+  return origin.replace(/^http/, 'ws') + path;
+}
+
+export function getStaticUrl(path: string): string {
+  if (!path) return BASE;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return BASE + (path.startsWith('/') ? path : `/${path}`);
 }
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const { data, status } = await api.get('/health', { timeout: 4000 });
-    return status === 200 && data?.status === 'ok';
+    const { data } = await api.get('/health', { timeout: 5000 });
+    return data?.status === 'ok';
   } catch {
     try {
-      const { data, status } = await api.get('/', { timeout: 4000 });
-      return status === 200 && data?.status === 'ok';
+      const { data } = await api.get('/', { timeout: 5000 });
+      return data?.status === 'ok';
     } catch {
       return false;
     }
   }
 }
 
-/** Downscale + recompress an image in the browser before upload. */
+/** Extract a human-readable message from axios / FastAPI errors. */
+export function apiErrorMessage(err: unknown, fallback = 'Request failed.'): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => (typeof d === 'string' ? d : (d as { msg?: string })?.msg))
+      .filter(Boolean);
+    if (parts.length) return parts.join('; ');
+  }
+  if (detail && typeof detail === 'object' && 'msg' in (detail as object)) {
+    return String((detail as { msg: string }).msg);
+  }
+  const msg = (err as { message?: string })?.message;
+  if (msg && msg !== 'Network Error') return msg;
+  if (msg === 'Network Error') return 'Cannot reach API. Check VITE_API_URL and that the backend is running.';
+  return fallback;
+}
+
 export async function compressImage(file: File, maxDim = 800): Promise<File> {
-  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
-
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-
-  const { width, height } = bitmap;
-  const longest = Math.max(width, height);
-  const scale = longest > maxDim ? maxDim / longest : 1;
-  const w = Math.max(1, Math.round(width * scale));
-  const h = Math.max(1, Math.round(height * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    bitmap.close();
-    return file;
-  }
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/jpeg', 0.88),
-  );
-  if (!blob) return file;
-
-  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-  return new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() });
-}
-
-export interface ApiStatus {
-  status: string;
-  version: string;
-  faces: number;
-  engines: { name: string; detail: string }[];
-}
-
-export async function getStatus(): Promise<ApiStatus | null> {
-  try {
-    const { data } = await api.get<ApiStatus>('/api/status', { timeout: 4000 });
-    return data;
-  } catch {
-    return null;
-  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    const done = (f: File) => {
+      URL.revokeObjectURL(url);
+      resolve(f);
+    };
+    img.onload = () => {
+      const { width, height } = img;
+      if (Math.max(width, height) <= maxDim) {
+        done(file);
+        return;
+      }
+      const scale = maxDim / Math.max(width, height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        done(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            done(file);
+            return;
+          }
+          done(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        0.88,
+      );
+    };
+    img.onerror = () => done(file);
+    img.src = url;
+  });
 }

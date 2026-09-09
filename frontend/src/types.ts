@@ -1,9 +1,12 @@
+export type MatchMode = 'face' | 'template';
+
 export interface VideoMatchResult {
   timestamp_seconds: number;
   frame_number: number;
   confidence: number;
   bbox: [number, number, number, number];
   frame_url: string;
+  scale?: number;
 }
 
 export interface VideoMatchResponse {
@@ -11,6 +14,7 @@ export interface VideoMatchResponse {
   video_duration_seconds: number;
   fps: number;
   matches: VideoMatchResult[];
+  mode?: MatchMode;
 }
 
 export interface LiveFaceResult {

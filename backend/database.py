@@ -1,14 +1,11 @@
 import sqlite3
 import numpy as np
-import os
 from datetime import datetime
 from pathlib import Path
+from config import DB_PATH, FACES_DIR, ensure_dirs
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "facematcher.db"
-UPLOADS_DIR = Path(__file__).parent / "static" / "faces"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+ensure_dirs()
+UPLOADS_DIR = FACES_DIR
 
 # id -> (name, encoding_np_array)
 FACE_CACHE: dict[int, tuple[str, np.ndarray]] = {}
@@ -67,9 +64,8 @@ def delete_face(face_id: int) -> bool:
         conn.execute("DELETE FROM known_faces WHERE id = ?", (face_id,))
         conn.commit()
     FACE_CACHE.pop(face_id, None)
-    # remove image file
     try:
-        img_path = Path(__file__).parent / row["image_path"].lstrip("/")
+        img_path = FACES_DIR / Path(row["image_path"]).name
         if img_path.exists():
             img_path.unlink()
     except Exception:

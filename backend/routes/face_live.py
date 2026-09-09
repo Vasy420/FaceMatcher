@@ -24,8 +24,9 @@ async def live_match(websocket: WebSocket):
             if msg_type == "init":
                 b64 = msg.get("reference_image", "")
                 try:
-                    img = resize_if_large(decode_base64_image(b64), 800)
-                    encs = face_recognition.face_encodings(img)
+                    img = resize_if_large(decode_base64_image(b64), max_dim=800)
+                    locations = face_recognition.face_locations(img, model="hog")
+                    encs = face_recognition.face_encodings(img, locations) if locations else []
                     if not encs:
                         await websocket.send_json({"error": "No face in reference image."})
                         continue
@@ -43,24 +44,36 @@ async def live_match(websocket: WebSocket):
                 t0 = time.monotonic()
                 b64 = msg.get("data", "")
                 try:
-                    img = decode_base64_image(b64)
-                    work = resize_if_large(img, 640)
-                    scale = img.shape[1] / work.shape[1]
+                    # Keep live frames modest for real-time HOG performance
+                    img = resize_if_large(decode_base64_image(b64), max_dim=640)
                 except Exception:
                     await websocket.send_json({"error": "Bad frame data."})
                     continue
 
-                locations = face_recognition.face_locations(work, model="hog")
-                encodings = face_recognition.face_encodings(work, locations)
+                locations = face_recognition.face_locations(img, model="hog")
+                encodings = face_recognition.face_encodings(img, locations) if locations else []
                 processing_ms = int((time.monotonic() - t0) * 1000)
+
+                # Client draws boxes in source video coordinates; if we resized,
+                # scale bboxes back using original dimensions if provided.
+                src_w = int(msg.get("width") or 0)
+                src_h = int(msg.get("height") or 0)
+                h, w = img.shape[:2]
+                sx = (src_w / w) if src_w > 0 else 1.0
+                sy = (src_h / h) if src_h > 0 else 1.0
 
                 results = []
                 for loc, enc in zip(locations, encodings):
                     dist = float(face_recognition.face_distance([ref_enc], enc)[0])
                     confidence = distance_to_confidence(dist)
-                    top, right, bottom, left = [int(v * scale) for v in loc]
+                    top, right, bottom, left = loc
                     results.append({
-                        "bbox": [top, right, bottom, left],
+                        "bbox": [
+                            int(top * sy),
+                            int(right * sx),
+                            int(bottom * sy),
+                            int(left * sx),
+                        ],
                         "confidence": round(confidence, 3),
                         "is_match": confidence >= 0.45,
                     })
@@ -72,6 +85,9 @@ async def live_match(websocket: WebSocket):
                 })
 
     except WebSocketDisconnect:
+        pass
+    except Exception:
+        # Malformed JSON / unexpected close
         pass
     finally:
         _sessions.pop(conn_id, None)

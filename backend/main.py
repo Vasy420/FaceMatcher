@@ -1,90 +1,82 @@
 import os
-from contextlib import asynccontextmanager
-from pathlib import Path
+
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from database import FACE_CACHE, init_db
-from routes.emotion import router as emotion_router
-from routes.face_db import router as db_router
-from routes.face_live import router as live_router
+from config import STATIC_DIR, cors_origins, ensure_dirs
+from database import init_db, list_faces
 from routes.face_video import router as video_router
+from routes.face_live import router as live_router
+from routes.face_db import router as db_router
+from routes.emotion import router as emotion_router
 
-STATIC_DIR = Path(__file__).parent / "static"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
-(STATIC_DIR / "frames").mkdir(exist_ok=True)
-(STATIC_DIR / "faces").mkdir(exist_ok=True)
+ensure_dirs()
 
-_frontend_raw = os.environ.get("FRONTEND_DIST", "").strip()
-FRONTEND_DIST = Path(_frontend_raw).expanduser() if _frontend_raw else None
-APP_VERSION = "1.1.0"
+try:
+    import cv2
+    cv2.setNumThreads(1)
+except Exception:
+    pass
 
+app = FastAPI(
+    title="FaceMatcher API",
+    version="2.0.0",
+    description="Face recognition + image-in-video matching, live webcam, face DB, emotion detection.",
+)
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    init_db()
-    yield
-
-
-app = FastAPI(title="FaceMatcher API", version=APP_VERSION, lifespan=lifespan)
-
-_raw_origins = os.environ.get("CORS_ORIGINS", "*").strip()
-_origins = ["*"] if _raw_origins == "*" else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+_origins = cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_credentials=False,
+    allow_credentials=_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 app.include_router(video_router)
 app.include_router(live_router)
 app.include_router(db_router)
 app.include_router(emotion_router)
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "version": APP_VERSION}
+@app.on_event("startup")
+def startup():
+    ensure_dirs()
+    init_db()
 
 
-@app.get("/")
-def root():
-    if FRONTEND_DIST:
-        index = FRONTEND_DIST / "index.html"
-        if FRONTEND_DIST.is_dir() and index.is_file():
-            return FileResponse(index)
-    return {"status": "ok", "version": APP_VERSION}
-
-
-@app.get("/api/status")
-def status():
+def _health_payload():
     return {
         "status": "ok",
-        "version": APP_VERSION,
-        "faces": len(FACE_CACHE),
-        "engines": [
-            {"name": "face_recognition", "detail": "dlib · ResNet · 128-D"},
-            {"name": "DeepFace + MTCNN", "detail": "7-class emotion"},
-            {"name": "OpenCV", "detail": "Frame extraction · BGR"},
-        ],
+        "version": "2.0.0",
+        "modules": ["video", "live", "faces", "emotion", "template"],
     }
 
 
-if FRONTEND_DIST and FRONTEND_DIST.is_dir():
-    @app.get("/{full_path:path}")
-    def spa(full_path: str):
-        reserved = ("api", "static", "health", "docs", "redoc", "openapi.json")
-        first = full_path.split("/", 1)[0]
-        if first in reserved:
-            return {"detail": "Not found"}
-        target = (FRONTEND_DIST / full_path).resolve()
-        root = FRONTEND_DIST.resolve()
-        if str(target).startswith(str(root)) and target.is_file():
-            return FileResponse(target)
-        return FileResponse(FRONTEND_DIST / "index.html")
+@app.get("/")
+def health():
+    return _health_payload()
+
+
+@app.get("/health", include_in_schema=False)
+def health_check():
+    return _health_payload()
+
+
+@app.get("/api/stats")
+def stats():
+    """Lightweight stats for the dashboard."""
+    faces = list_faces()
+    return {
+        "enrolled_faces": len(faces),
+        "status": "ok",
+    }

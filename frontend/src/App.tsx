@@ -3,11 +3,11 @@ import { AnimatePresence } from 'framer-motion';
 import { createContext, useCallback, useContext, useState } from 'react';
 import Layout from './components/Layout';
 import Welcome from './pages/Welcome';
+import Dashboard from './pages/Dashboard';
 import VideoMatch from './pages/VideoMatch';
 import LiveMatch from './pages/LiveMatch';
 import FaceDatabase from './pages/FaceDatabase';
 import EmotionDetect from './pages/EmotionDetect';
-import NotFound from './pages/NotFound';
 import { ToastItem, ToastType } from './types';
 import { uid } from './lib/utils';
 import ToastContainer from './components/Toast';
@@ -21,6 +21,7 @@ export const useToast = () => useContext(ToastContext);
 export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const location = useLocation();
+  const isWelcome = location.pathname === '/';
 
   const toast = useCallback((message: string, type: ToastType = 'info') => {
     const id = uid();
@@ -32,18 +33,23 @@ export default function App() {
 
   return (
     <ToastContext.Provider value={{ toast }}>
-      <Layout>
+      {isWelcome ? (
         <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<Welcome />} />
-            <Route path="/video" element={<VideoMatch />} />
-            <Route path="/live" element={<LiveMatch />} />
-            <Route path="/database" element={<FaceDatabase />} />
-            <Route path="/emotion" element={<EmotionDetect />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Welcome key="welcome" />
         </AnimatePresence>
-      </Layout>
+      ) : (
+        <Layout>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/home" element={<Dashboard />} />
+              <Route path="/video" element={<VideoMatch />} />
+              <Route path="/live" element={<LiveMatch />} />
+              <Route path="/database" element={<FaceDatabase />} />
+              <Route path="/emotion" element={<EmotionDetect />} />
+            </Routes>
+          </AnimatePresence>
+        </Layout>
+      )}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </ToastContext.Provider>
   );
