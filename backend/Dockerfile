@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas0-pthread \
     liblapack3 \
     libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libsm6 \
+    libice6 \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
