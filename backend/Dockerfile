@@ -38,6 +38,7 @@ RUN set -eux; \
     REQ="$SRC/requirements-docker.txt"; \
     if [ ! -f "$REQ" ]; then REQ="$SRC/requirements.txt"; fi; \
     pip install --no-cache-dir --upgrade pip; \
+    pip install --no-cache-dir "numpy==1.26.4"; \
     pip install --no-cache-dir \
       https://github.com/comethrusws/Dlib_linux_python_3.x/releases/download/v2.0.0/dlib-20.0.99-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl; \
     pip install --no-cache-dir -r "$REQ"; \
