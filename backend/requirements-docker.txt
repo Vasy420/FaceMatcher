@@ -1,0 +1,11 @@
+# Slim set for Render. No TensorFlow/DeepFace (those OOM the 8GB builder
+# and the 512MB Free runtime). dlib is installed from a prebuilt wheel
+# in the Dockerfile — do not list it here or pip will compile from source.
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+face_recognition==1.3.0
+opencv-python-headless==4.9.0.80
+numpy>=1.26.4,<2.2
+Pillow==10.3.0
+websockets==12.0

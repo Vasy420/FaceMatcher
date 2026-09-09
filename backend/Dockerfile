@@ -6,21 +6,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=120 \
     PORT=10000 \
-    TF_CPP_MIN_LOG_LEVEL=2 \
-    TF_ENABLE_ONEDNN_OPTS=0 \
     CUDA_VISIBLE_DEVICES=-1 \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
-    MKL_NUM_THREADS=1 \
-    NUMEXPR_NUM_THREADS=1 \
-    DEEPFACE_HOME=/app/.deepface
+    MKL_NUM_THREADS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    libopenblas-dev \
-    liblapack-dev \
-    libx11-dev \
+    libopenblas0-pthread \
+    liblapack3 \
+    libx11-6 \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
@@ -29,17 +23,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Accept either Docker context: repo root OR backend/
+# Accept Docker context = repo root OR backend/
 COPY . /src
 RUN set -eux; \
-    if [ -f /src/requirements.txt ]; then SRC=/src; \
+    if [ -f /src/requirements-docker.txt ]; then SRC=/src; \
+    elif [ -f /src/backend/requirements-docker.txt ]; then SRC=/src/backend; \
+    elif [ -f /src/requirements.txt ]; then SRC=/src; \
     elif [ -f /src/backend/requirements.txt ]; then SRC=/src/backend; \
-    else echo "requirements.txt not found"; ls -la /src; exit 1; fi; \
+    else echo "requirements not found"; ls -la /src; exit 1; fi; \
+    REQ="$SRC/requirements-docker.txt"; \
+    if [ ! -f "$REQ" ]; then REQ="$SRC/requirements.txt"; fi; \
     pip install --no-cache-dir --upgrade pip; \
-    pip install --no-cache-dir -r "$SRC/requirements.txt"; \
+    pip install --no-cache-dir \
+      https://github.com/comethrusws/Dlib_linux_python_3.x/releases/download/v2.0.0/dlib-20.0.99-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl; \
+    pip install --no-cache-dir -r "$REQ"; \
     cp -a "$SRC"/. /app/; \
-    mkdir -p static/frames static/faces /app/.deepface; \
-    rm -rf /src
+    mkdir -p static/frames static/faces; \
+    rm -rf /src /root/.cache/pip /tmp/*
 
 EXPOSE 10000
 

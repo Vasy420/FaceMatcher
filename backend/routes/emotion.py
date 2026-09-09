@@ -24,8 +24,14 @@ async def detect_emotion(image: UploadFile = File(...)):
         img_h, img_w = img.shape[:2]
 
         try:
-            from deepface import DeepFace  # lazy: TensorFlow is heavy; skip at boot
+            from deepface import DeepFace
+        except ImportError:
+            raise HTTPException(
+                status_code=503,
+                detail="Emotion is not installed on this server (TensorFlow omitted so Render Free can build and run). Video, live, and face DB still work.",
+            )
 
+        try:
             results = DeepFace.analyze(
                 img_path=str(tmp),
                 actions=["emotion"],

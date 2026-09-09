@@ -143,9 +143,9 @@ Simplest: **one Render web service** (Docker at repo root) serves the UI and the
 | Instance | **Free** |
 | Health check | `/health` |
 
-Wait for the first build (dlib compile, 10–20 min). Then open `https://<service>.onrender.com` — you should see the FaceMatcher UI. JSON health: `/health`.
+First build should be a few minutes (prebuilt dlib wheel — no C++ compile). Then open `https://<service>.onrender.com` — you should see the FaceMatcher UI. JSON health: `/health`.
 
-Free tier: 512 MB RAM, sleeps after 15 min idle, Emotion may OOM. Faces reset on sleep (no disk).
+Free tier: 512 MB RAM, sleeps after 15 min idle. **Emotion is omitted on Render** (TensorFlow OOMs the builder and Free RAM). Video, live, and face DB still run. Faces reset on sleep (no disk).
 
 If you already created a service, change **Settings → Build** to the table above, then **Manual Deploy**.
 

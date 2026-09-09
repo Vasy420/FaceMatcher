@@ -11,5 +11,8 @@
 **/.env
 **/.env.local
 frontend/.env.production
+frontend/ui-shots
+PythonProject
 backend/static/frames
 backend/static/faces
+backend/static/test
