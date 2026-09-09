@@ -1,5 +1,5 @@
 # Full-stack image: React UI + FastAPI on one origin (Render default).
-# dlib comes from a prebuilt manylinux wheel so the 8GB builder does not compile C++.
+# dlib = prebuilt wheel (no C++ compile). OpenCV 4.9 needs NumPy 1.x.
 FROM node:20-alpine AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json* ./
@@ -14,14 +14,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=120 \
-    TF_CPP_MIN_LOG_LEVEL=2 \
     CUDA_VISIBLE_DEVICES=-1 \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     FRONTEND_DIST=/app/frontend_dist
 
-# Runtime libs only — no cmake/g++ (dlib is a wheel).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas0-pthread \
     liblapack3 \
@@ -38,12 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY backend/requirements-docker.txt .
+# CACHEBUST: change this to force Render to ignore stale pip layers.
+ARG CACHEBUST=numpy126-20260909
+COPY backend/requirements-docker.txt backend/constraints-docker.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir "numpy==1.26.4" \
     && pip install --no-cache-dir \
       https://github.com/comethrusws/Dlib_linux_python_3.x/releases/download/v2.0.0/dlib-20.0.99-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl \
-    && pip install --no-cache-dir -r requirements-docker.txt \
+    && pip install --no-cache-dir -c constraints-docker.txt -r requirements-docker.txt \
+    && pip install --no-cache-dir --force-reinstall "numpy==1.26.4" \
+    && python -c "import numpy, cv2, dlib, face_recognition; assert numpy.__version__.startswith('1.'), numpy.__version__; print('imports-ok', numpy.__version__, cv2.__version__)" \
     && rm -rf /root/.cache/pip /tmp/*
 
 COPY backend/ ./
