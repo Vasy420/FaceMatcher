@@ -120,7 +120,7 @@ browser ──REST/WS──► FastAPI (:8000)
 | File | Variable | Value |
 |------|----------|-------|
 | `frontend/.env.development` | `VITE_API_URL` | `http://localhost:8000` |
-| `frontend/.env.production` | `VITE_API_URL` | Render API origin (no trailing slash) |
+| `frontend/.env.production` | `VITE_API_URL` | `https://facematcher.onrender.com` |
 | `backend/.env.example` | `CORS_ORIGINS` | `*` or your Vercel origin |
 
 Copy `frontend/.env.example` → `frontend/.env.development` for local UI.
@@ -129,36 +129,37 @@ Copy `frontend/.env.example` → `frontend/.env.development` for local UI.
 
 ## Deploy
 
-Split: **backend → Render**, **frontend → Vercel**. Deploy the API first so you have a URL for `VITE_API_URL`.
+Simplest: **one Render web service** (Docker at repo root) serves the UI and the API on the same URL. Vercel is optional.
 
-### 1. Backend → Render
+### Render (required)
 
-1. Push this repo to GitHub.
-2. [Render](https://dashboard.render.com) → **New** → **Blueprint** and select the repo (`render.yaml`), **or** **New Web Service** with:
-   - Runtime: **Docker**
-   - Dockerfile path: `backend/Dockerfile`
-   - Context: `backend`
-3. Plan: **Starter** (512 MB) may boot face/video/live. **Standard (2 GB)** if Emotion OOMs. Free (512 MB) will almost certainly OOM.
-4. After first deploy, copy the service URL (`https://facematcher-api.onrender.com` or the URL Render assigned).
-5. Optional: set `CORS_ORIGINS=https://your-app.vercel.app` (comma-separate preview origins if needed).
-6. Optional persistent disk (paid): mount `/data`, then set `DATA_DIR=/data`, `DB_PATH=/data/facematcher.db`, `STATIC_DIR=/data/static`. Without a disk, SQLite + uploaded faces/frames reset on every deploy and spin-down.
+**New → Web Service** (not Blueprint). Connect `Vasy420/FaceMatcher`.
 
-Health check: `GET /health` (also `/`).
+| Setting | Value |
+|--------|--------|
+| Runtime | Docker |
+| Dockerfile path | `Dockerfile` (repo root — not `backend/Dockerfile`) |
+| Docker context | empty / `.` |
+| Instance | **Free** |
+| Health check | `/health` |
 
-Render HTTP timeout is ~100s — production video length is capped via `MAX_VIDEO_DURATION_SEC=90`. First Emotion request downloads DeepFace weights (~200 MB).
+Wait for the first build (dlib compile, 10–20 min). Then open `https://<service>.onrender.com` — you should see the FaceMatcher UI. JSON health: `/health`.
 
-### 2. Frontend → Vercel
+Free tier: 512 MB RAM, sleeps after 15 min idle, Emotion may OOM. Faces reset on sleep (no disk).
 
-1. [Vercel](https://vercel.com/new) → import the same GitHub repo.
-2. Leave Root Directory empty (repo-root `vercel.json` builds `frontend/`). **Or** set Root Directory to `frontend`.
-3. Environment variable (Production + Preview):
+If you already created a service, change **Settings → Build** to the table above, then **Manual Deploy**.
+
+### Vercel (optional extra UI)
+
+1. Import the same repo.
+2. Root Directory: **empty**. If you already set it to `frontend`, set Output Directory to `dist` and Install Command to `npm install`.
+3. Env (Production + Preview):
 
    ```
    VITE_API_URL=https://YOUR-RENDER-SERVICE.onrender.com
    ```
 
-   No trailing slash. Vite inlines this at **build** time — change it → redeploy the frontend.
-4. Deploy. `https://` frontend talks to `https://` API; live match uses `wss://` automatically.
+   No trailing slash. Use the URL that actually opens, not `facematcher-api` unless that is the name Render gave you.
 
 Local production build check:
 

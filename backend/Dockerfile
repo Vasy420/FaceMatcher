@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=10000 \
     TF_CPP_MIN_LOG_LEVEL=2 \
     TF_ENABLE_ONEDNN_OPTS=0 \
+    CUDA_VISIBLE_DEVICES=-1 \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
@@ -22,18 +23,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-dev \
     libgl1 \
     libglib2.0-0 \
+    libgomp1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-RUN mkdir -p static/frames static/faces /app/.deepface
+# Accept either Docker context: repo root OR backend/
+COPY . /src
+RUN set -eux; \
+    if [ -f /src/requirements.txt ]; then SRC=/src; \
+    elif [ -f /src/backend/requirements.txt ]; then SRC=/src/backend; \
+    else echo "requirements.txt not found"; ls -la /src; exit 1; fi; \
+    pip install --no-cache-dir --upgrade pip; \
+    pip install --no-cache-dir -r "$SRC/requirements.txt"; \
+    cp -a "$SRC"/. /app/; \
+    mkdir -p static/frames static/faces /app/.deepface; \
+    rm -rf /src
 
 EXPOSE 10000
 
-# Render injects PORT. Shell form so the env var expands.
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --proxy-headers --forwarded-allow-ips='*' --timeout-keep-alive 75"]
