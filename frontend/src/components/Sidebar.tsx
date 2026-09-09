@@ -62,12 +62,12 @@ export default function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     <motion.aside
       animate={{ width }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-      className="fixed left-0 top-0 bottom-0 z-30 flex flex-col overflow-hidden border-r border-white/[0.06] bg-zinc-950"
+      className="hidden md:flex fixed left-0 top-0 bottom-0 z-30 flex-col overflow-hidden border-r border-white/[0.06] bg-zinc-950"
     >
       <div className="shrink-0 h-16 min-h-16 max-h-16 px-3 flex items-center gap-2 border-b border-white/[0.06]">
         <div className={clsx('min-w-0', collapsed ? 'flex-1 flex justify-center' : 'flex-1')}>
           <Logo
-            to="/home"
+            to="/"
             size={32}
             wordmark={!collapsed}
             tagline={false}

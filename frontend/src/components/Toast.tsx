@@ -23,7 +23,7 @@ interface Props {
 
 export default function ToastContainer({ toasts, onRemove }: Props) {
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed top-3 left-3 right-3 sm:left-auto sm:right-4 sm:top-4 z-[9999] flex flex-col gap-2 pointer-events-none items-stretch sm:items-end">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div
@@ -32,7 +32,7 @@ export default function ToastContainer({ toasts, onRemove }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            className={`pointer-events-auto flex items-center gap-3 px-3.5 py-2.5 min-w-[260px] max-w-sm rounded-lg border bg-zinc-900/95 backdrop-blur-md shadow-xl shadow-black/40 ${BORDER[t.type]}`}
+            className={`pointer-events-auto flex items-center gap-3 px-3.5 py-2.5 w-full sm:min-w-[260px] sm:w-auto max-w-sm rounded-lg border bg-zinc-900/95 backdrop-blur-md shadow-xl shadow-black/40 ${BORDER[t.type]}`}
           >
             {ICONS[t.type]}
             <span className="text-sm text-zinc-200 flex-1">{t.message}</span>

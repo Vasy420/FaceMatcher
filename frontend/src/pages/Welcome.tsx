@@ -79,10 +79,12 @@ export default function Welcome() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       {/* Top bar — landing only */}
-      <header className="sticky top-0 z-20 flex items-center justify-between h-16 px-6 sm:px-10 border-b border-white/[0.06] bg-zinc-950/80 backdrop-blur-xl">
-        <Logo to="/" size={34} />
-        <button type="button" onClick={enter} className="btn-primary h-9 px-4 text-sm">
-          Enter dashboard <ArrowRight size={14} />
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-3 h-14 sm:h-16 px-4 sm:px-10 border-b border-white/[0.06] bg-zinc-950/80 backdrop-blur-xl">
+        <Logo to="/" size={32} />
+        <button type="button" onClick={enter} className="btn-primary h-9 px-3 sm:px-4 text-sm shrink-0">
+          <span className="sm:hidden">Enter</span>
+          <span className="hidden sm:inline">Enter dashboard</span>
+          <ArrowRight size={14} />
         </button>
       </header>
 

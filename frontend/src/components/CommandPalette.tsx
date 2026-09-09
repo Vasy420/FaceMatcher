@@ -146,7 +146,7 @@ export default function CommandPalette({ open, onClose }: Props) {
                 placeholder="Search pages and actions…"
                 className="flex-1 bg-transparent outline-none text-base text-zinc-100 placeholder:text-zinc-600"
               />
-              <kbd className="text-[11px] font-mono text-zinc-500 px-1.5 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08]">
+              <kbd className="hidden sm:inline text-[11px] font-mono text-zinc-500 px-1.5 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08]">
                 ESC
               </kbd>
             </div>

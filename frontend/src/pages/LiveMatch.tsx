@@ -349,7 +349,7 @@ export default function LiveMatch() {
             )}
           </AnimatePresence>
 
-          <div className="relative overflow-hidden rounded-xl border border-white/[0.08] min-h-[400px] flex items-center justify-center bg-zinc-900/50">
+          <div className="relative overflow-hidden rounded-xl border border-white/[0.08] min-h-[240px] sm:min-h-[400px] flex items-center justify-center bg-zinc-900/50">
             <video ref={videoRef} className="hidden" playsInline muted />
             <canvas
               ref={canvasRef}
